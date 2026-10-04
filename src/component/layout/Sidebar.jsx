@@ -3,6 +3,7 @@ import {
   House,
   Package,
   FileText,
+  ScrollText,
   ShieldCheck,
   Users,
   MapPin,
@@ -15,6 +16,7 @@ import {
   CalendarCheck,
   Wallet,
   BarChart3,
+  Coins,
 } from "lucide-react";
 import { useLocation, Link } from "react-router-dom";
 
@@ -43,6 +45,7 @@ const Sidebar = ({
         { icon: ShieldCheck, label: "Staff Management", path: "/staff-management" },
         { icon: Users, label: "Customers", path: "/customers" },
         { icon: Gift, label: "Referrals", path: "/referrals" },
+        { icon: Coins, label: "Points & Loyalty", path: "/points" },
         { icon: HelpCircle, label: "Enquiries", path: "/enquiries" },
         { icon: Receipt, label: "Quotations", path: "/quotations" },
       ],
@@ -61,6 +64,7 @@ const Sidebar = ({
         { icon: Package, label: "Tour Packages", path: "/tour-packages" },
         { icon: BadgePercent, label: "Tour Offers", path: "/tour-offers" },
         { icon: MapPin, label: "Destinations", path: "/destinations" },
+        { icon: ScrollText, label: "Rules & Regulations", path: "/rules-regulations" },
         { icon: Building2, label: "Hotels", path: "/hotels" },
         { icon: BadgePercent, label: "Vendors", path: "/vendors" },
         { icon: Car, label: "Vehicles", path: "/vehicles" },

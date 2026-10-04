@@ -32,6 +32,8 @@ const EnquiryManagement = lazy(() => import('./pages/EnquiryManagement'));
 const LeadManagement = lazy(() => import('./pages/LeadManagement'));
 const Referrals = lazy(() => import('./pages/Referrals'));
 const ReferralsConfiguration = lazy(() => import('./pages/ReferralsConfiguration'));
+const RulesRegulations = lazy(() => import('./pages/RulesRegulations'));
+const PointsManagement = lazy(() => import('./pages/PointsManagement'));
 const FinancialManagement = lazy(() => import('./pages/FinancialManagement'));
 const ServerUnavailable = lazy(() => import('./pages/ServerUnavailable'));
 const NotFound = lazy(() => import('./pages/NotFound'));
@@ -71,6 +73,8 @@ function App() {
             <Route path="/customers/:customerId" element={<CustomerDetails />} />
             <Route path="/referrals" element={<Referrals />} />
             <Route path="/referrals/configuration" element={<ReferralsConfiguration />} />
+            <Route path="/rules-regulations" element={<RulesRegulations />} />
+            <Route path="/points" element={<PointsManagement />} />
             <Route path="/financial" element={<FinancialManagement />} />
             <Route path="/enquiries" element={<EnquiryManagement />} />
             <Route path="/enquiries/:enquiryId/lead" element={<LeadManagement />} />
