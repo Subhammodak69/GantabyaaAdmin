@@ -11,8 +11,10 @@ import ActionMenu from '../component/common/ActionMenu';
 import { apiCall, handleApiError } from '../utils/apiCall';
 import { useAuth } from '../context/AuthContext';
 
-const roleOptions = ['ADMIN', 'MANAGER', 'SUPERVISOR', 'STAFF'];
+const roleOptions = ['ADMIN','STAFF'];
 const roleSelectOptions = roleOptions.map((option) => ({ value: option, label: option }));
+const staffRoleSelectOptions = roleOptions
+  .map((option) => ({ value: option, label: option }));
 
 const defaultForm = {
   name: '',
@@ -137,7 +139,7 @@ const StaffManagement = () => {
     const payload = {
       name: formState.name,
       email: formState.email,
-      mobile: formState.mobile,
+      mobile: formState.mobile.trim() || null,
       role: formState.role,
       profile_pic: formState.profile_pic,
       is_active: formState.is_active,
@@ -569,8 +571,8 @@ const StaffManagement = () => {
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Role</label>
               <SelectField
-                options={roleSelectOptions}
-                value={roleSelectOptions.find((option) => option.value === formState.role) || null}
+                options={staffRoleSelectOptions}
+                value={staffRoleSelectOptions.find((option) => option.value === formState.role) || null}
                 onChange={(selected) => handleFieldChange('role', selected?.value || '')}
                 isSearchable={false}
                 placeholder="Select role"
@@ -598,7 +600,6 @@ const StaffManagement = () => {
                 onChange={(event) => handleFieldChange('mobile', event.target.value)}
                 className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
                 placeholder="Enter mobile"
-                required
               />
             </div>
 

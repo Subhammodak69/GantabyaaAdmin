@@ -24,6 +24,8 @@ import { apiCall, handleApiError } from '../utils/apiCall';
 import ConfirmDeleteModal from '../component/common/ConfirmDeleteModal';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE } from '../utils/config';
+import Modal from '../component/common/Modal';
+import DragDropUpload from '../component/common/DragDropUpload';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const formatDate = (dateString) => {
@@ -78,6 +80,14 @@ const ProfileField = ({ icon: Icon, label, value, mono }) => (
 const Profile = () => {
   const { user, tokenInfo, fetchUserProfile, logout } = useAuth();
 
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    name: '',
+    email: '',
+    mobile: '',
+    profile_pic: '',
+  });
   const [sessions, setSessions] = useState([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [revokingId, setRevokingId] = useState(null);
@@ -116,6 +126,46 @@ const Profile = () => {
       toast.error('Could not refresh profile');
     } finally {
       setRefreshingProfile(false);
+    }
+  };
+
+  const openEditProfile = () => {
+    setProfileForm({
+      name: user?.name || '',
+      email: user?.email || '',
+      mobile: user?.mobile || '',
+      profile_pic: user?.profile_pic || '',
+    });
+    setIsEditProfileOpen(true);
+  };
+
+  const handleProfileSubmit = async (event) => {
+    event.preventDefault();
+    if (!user?.id) {
+      toast.error('Unable to identify the current admin account');
+      return;
+    }
+    setProfileSaving(true);
+    try {
+      const response = await apiCall(`/api/v1/admin/account/${user.id}`, 'PATCH', {
+        name: profileForm.name.trim(),
+        email: profileForm.email.trim(),
+        mobile: profileForm.mobile.trim() || null,
+        role: user.role || 'ADMIN',
+        profile_pic: profileForm.profile_pic || '',
+        is_active: user.is_active !== false,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.detail || 'Unable to update profile');
+      }
+      await fetchUserProfile();
+      setIsEditProfileOpen(false);
+      toast.success(payload?.message || 'Profile updated successfully');
+    } catch (error) {
+      handleApiError(error, 'Unable to update profile');
+    } finally {
+      setProfileSaving(false);
     }
   };
 
@@ -338,7 +388,11 @@ const Profile = () => {
               </p>
             </div>
           </div>
-          <button className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-xl transition-colors border border-indigo-200 dark:border-indigo-800/60">
+          <button
+            type="button"
+            onClick={openEditProfile}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-xl transition-colors border border-indigo-200 dark:border-indigo-800/60"
+          >
             <Edit3 className="w-3.5 h-3.5" />
             Edit Profile
           </button>
@@ -350,6 +404,75 @@ const Profile = () => {
           ))}
         </div>
       </div>
+
+      <Modal
+        isOpen={isEditProfileOpen}
+        onClose={() => !profileSaving && setIsEditProfileOpen(false)}
+        title="Edit admin profile"
+        icon={Edit3}
+        size="lg"
+        footer={(
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setIsEditProfileOpen(false)}
+              disabled={profileSaving}
+              className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="admin-profile-form"
+              disabled={profileSaving}
+              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+            >
+              {profileSaving ? 'Saving...' : 'Save changes'}
+            </button>
+          </div>
+        )}
+      >
+        <form id="admin-profile-form" onSubmit={handleProfileSubmit} className="space-y-4 p-1">
+          <div>
+            <label htmlFor="profile-name" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Full name</label>
+            <input
+              id="profile-name"
+              value={profileForm.name}
+              onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))}
+              required
+              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            />
+          </div>
+          <div>
+            <label htmlFor="profile-email" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
+            <input
+              id="profile-email"
+              type="email"
+              value={profileForm.email}
+              onChange={(event) => setProfileForm((current) => ({ ...current, email: event.target.value }))}
+              required
+              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            />
+          </div>
+          <div>
+            <label htmlFor="profile-mobile" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Mobile</label>
+            <input
+              id="profile-mobile"
+              type="tel"
+              value={profileForm.mobile}
+              onChange={(event) => setProfileForm((current) => ({ ...current, mobile: event.target.value }))}
+              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            />
+          </div>
+          <DragDropUpload
+            label="Profile picture"
+            value={profileForm.profile_pic}
+            onChange={(url) => setProfileForm((current) => ({ ...current, profile_pic: url }))}
+            accept="image/*"
+            helperText="Recommended: square image, JPG or PNG"
+          />
+        </form>
+      </Modal>
 
       {/* ── Session Management ── */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200/80 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden">

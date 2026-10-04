@@ -34,6 +34,8 @@ import { sanitizeNumericInput } from '../utils/inputValidation';
 import { apiCall, handleApiError } from '../utils/apiCall';
 
 const defaultReviewForm = {
+  reviewer_type: 'customer',
+  name: '',
   rating: 5,
   review: '',
   review_gallery: [],
@@ -50,6 +52,18 @@ const formatDate = (value) => {
     });
   } catch {
   }
+};
+
+const getGalleryMediaUrl = (media) =>
+  typeof media === 'string' ? media : media?.url || '';
+
+const isGalleryVideo = (media) => {
+  const url = getGalleryMediaUrl(media).toLowerCase();
+  const type = typeof media === 'object' ? media?.type?.toLowerCase() : '';
+  return type === 'video'
+    || /\.(mp4|mov|webm|ogg)(?:[?#]|$)/i.test(url)
+    || url.includes('/video/upload')
+    || url.includes('/video/');
 };
 
 const StarRating = ({ rating, max = 5 }) => {
@@ -201,6 +215,8 @@ const TourReviews = () => {
       },
     } : null));
     setFormState({
+      reviewer_type: review.customer_id ? 'customer' : 'named',
+      name: review.name || review.customer_name || '',
       customer_id: review.customer_id || '',
       rating: Number(review.rating) || 5,
       review: review.review || '',
@@ -264,8 +280,13 @@ const TourReviews = () => {
   /* Save review (Create / Update) */
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedCustomer?.value) {
+    const isCustomerReview = formState.reviewer_type === 'customer';
+    if (isCustomerReview && !selectedCustomer?.value) {
       toast.error('Select a customer for this review.');
+      return;
+    }
+    if (!isCustomerReview && !formState.name.trim()) {
+      toast.error('Enter a reviewer name.');
       return;
     }
 
@@ -285,8 +306,10 @@ const TourReviews = () => {
         });
 
       const payload = {
-        customer_id: selectedCustomer.value,
-        name: selectedCustomer.customer?.name || selectedCustomer.customer?.full_name || selectedCustomer.label.split(' · ')[0],
+        customer_id: isCustomerReview ? selectedCustomer.value : null,
+        name: isCustomerReview
+          ? selectedCustomer.customer?.name || selectedCustomer.customer?.full_name || selectedCustomer.label.split(' · ')[0]
+          : formState.name.trim(),
         rating: Number(formState.rating) || 5,
         review: formState.review.trim(),
         review_gallery: galleryPayload,
@@ -661,22 +684,44 @@ const TourReviews = () => {
                   render: (review) => {
                     const gallery = Array.isArray(review.review_gallery) ? review.review_gallery : [];
                     if (gallery.length === 0) return <span className="text-xs text-gray-400">No photos</span>;
+                    const renderThumbnail = (media, index, className) => {
+                      const url = getGalleryMediaUrl(media);
+                      if (isGalleryVideo(media)) {
+                        return (
+                          <div className="relative h-full w-full">
+                            <video
+                              src={url}
+                              aria-label={media?.alt || `Review video ${index + 1}`}
+                              className={className}
+                              muted
+                              preload="metadata"
+                            />
+                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/15">
+                              <span className="rounded-full bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white">VIDEO</span>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <img
+                          src={url}
+                          alt={media?.alt || `Review image ${index + 1}`}
+                          className={className}
+                        />
+                      );
+                    };
                     return (
                       <div
                         onClick={() => setGalleryModal({ open: true, images: gallery, reviewerName: review.name || 'Anonymous' })}
                         className="group/photos relative flex h-12 w-16 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800"
                       >
                         {gallery.length === 1 ? (
-                          <img
-                            src={gallery[0]?.url || gallery[0]}
-                            alt="Review photo"
-                            className="h-full w-full object-cover transition group-hover/photos:scale-105"
-                          />
+                          renderThumbnail(gallery[0], 0, 'h-full w-full object-cover transition group-hover/photos:scale-105')
                         ) : (
                           <div className="grid h-full w-full grid-cols-2 gap-0.5 p-0.5">
                             {gallery.slice(0, 4).map((img, idx) => (
                               <div key={idx} className="relative overflow-hidden rounded-sm bg-gray-200 dark:bg-gray-700">
-                                <img src={img?.url || img} alt="" className="h-full w-full object-cover" />
+                                {renderThumbnail(img, idx, 'h-full w-full object-cover')}
                               </div>
                             ))}
                           </div>
@@ -801,8 +846,8 @@ const TourReviews = () => {
                 <div className="overflow-y-auto p-2">
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
                     {galleryModal.images.map((img, idx) => {
-                      const url = img?.url || (typeof img === 'string' ? img : '');
-                      const isVideo = img?.type === 'video' || (typeof url === 'string' && url.match(/\.(mp4|webm|mov|ogg)$/i));
+                      const url = getGalleryMediaUrl(img);
+                      const isVideo = isGalleryVideo(img);
                       return (
                         <button
                           key={idx}
@@ -843,8 +888,8 @@ const TourReviews = () => {
           onClose={() => setViewerModal({ open: false, image: null })}
         >
           {viewerModal.image && (() => {
-            const url = viewerModal.image?.url || (typeof viewerModal.image === 'string' ? viewerModal.image : '');
-            const isVideo = viewerModal.image?.type === 'video' || (typeof url === 'string' && url.match(/\.(mp4|webm|mov|ogg)$/i));
+            const url = getGalleryMediaUrl(viewerModal.image);
+            const isVideo = isGalleryVideo(viewerModal.image);
             return isVideo ? (
               <video src={url} controls autoPlay className="max-h-[90vh] w-auto max-w-full" />
             ) : (
@@ -885,23 +930,63 @@ const TourReviews = () => {
         <form id="tour-review-form" onSubmit={handleSubmit} className="space-y-5 p-1">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Customer <span className="text-red-500">*</span>
+              Review type <span className="text-red-500">*</span>
             </label>
-            <SelectField
-              options={customerOptions}
-              value={selectedCustomer}
-              onChange={setSelectedCustomer}
-              onMenuOpen={handleCustomerMenuOpen}
-              onMenuScrollToBottom={handleCustomerMenuScrollToBottom}
-              isLoading={customersLoading}
-              isSearchable
-              isClearable
-              placeholder="Search and select a customer"
-              noOptionsMessage={() => (customersLoading ? 'Loading customers...' : 'No customers found')}
-              menuPlacement="auto"
-              classNamePrefix="react-select"
-            />
-            {selectedCustomer && (
+            <div className="mb-4 flex flex-wrap gap-3">
+              {[
+                ['customer', 'Customer review'],
+                ['named', 'Named / dummy review'],
+              ].map(([value, label]) => (
+                <label key={value} className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-200">
+                  <input
+                    type="radio"
+                    name="reviewer_type"
+                    value={value}
+                    checked={formState.reviewer_type === value}
+                    onChange={() => setFormState((current) => ({ ...current, reviewer_type: value }))}
+                    className="h-4 w-4 text-violet-600 focus:ring-violet-500"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            {formState.reviewer_type === 'customer' ? (
+              <>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Customer <span className="text-red-500">*</span>
+                </label>
+                <SelectField
+                  options={customerOptions}
+                  value={selectedCustomer}
+                  onChange={setSelectedCustomer}
+                  onMenuOpen={handleCustomerMenuOpen}
+                  onMenuScrollToBottom={handleCustomerMenuScrollToBottom}
+                  isLoading={customersLoading}
+                  isSearchable
+                  isClearable
+                  placeholder="Search and select a customer"
+                  noOptionsMessage={() => (customersLoading ? 'Loading customers...' : 'No customers found')}
+                  menuPlacement="auto"
+                  classNamePrefix="react-select"
+                />
+              </>
+            ) : (
+              <div>
+                <label htmlFor="reviewer-name" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Reviewer name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="reviewer-name"
+                  value={formState.name}
+                  onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))}
+                  required
+                  maxLength={200}
+                  placeholder="Enter reviewer name"
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/15 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                />
+              </div>
+            )}
+            {formState.reviewer_type === 'customer' && selectedCustomer && (
               <div className="mt-3 flex items-start gap-3 rounded-xl border border-violet-100 bg-violet-50/70 p-3 dark:border-violet-900/40 dark:bg-violet-950/20">
                 {selectedCustomer.customer?.profile_pic || selectedCustomer.customer?.profile_picture || selectedCustomer.customer?.avatar_url ? (
                   <img
