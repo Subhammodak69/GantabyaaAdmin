@@ -16,6 +16,17 @@ import { sanitizeNumericInput } from '../utils/inputValidation';
 const inputClass = 'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/15 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200';
 const emptyTraveller = { full_name: '', gender: '', date_of_birth: '', mobile: '', email: '', relationship_to_customer: '', is_primary: false };
 const defaultForm = { customer_id: '', enquiry_id: '', quotation_id: '', destination_id: '', package_id: '', variant_id: '', departure_id: '', departure_date: '', return_date: '', adult_count: '1', child_count: '0', senior_count: '0', total_selling_price: '0', advance_received: '0', payment_mode: 'CASH', sales_account_id: '', source: 'OFFLINE', special_notes: '', travellers: [{ ...emptyTraveller }] };
+const getPerPersonSellingPrice = (variant) => {
+  const value = variant?.selling_price || variant?.list_price || variant?.price;
+  if (value == null || value === '') return null;
+  const price = Number(value);
+  return Number.isFinite(price) ? price : null;
+};
+const calculateTotalSellingPrice = (price, formValues) => price * (
+  (Number(formValues.adult_count) || 0)
+  + (Number(formValues.child_count) || 0)
+  + (Number(formValues.senior_count) || 0)
+);
 
 const bookingStatuses = ['TENTATIVE', 'CONFIRMED', 'PARTIALLY_PAID', 'FULLY_PAID', 'TRAVELLED', 'COMPLETED', 'ON_HOLD', 'CANCELLED', 'REFUNDED'];
 const bookingSources = ['APP', 'WEBSITE', 'WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'PHONE', 'WALK_IN', 'EXISTING_CUSTOMER', 'REFERRAL', 'B2B', 'OFFLINE', 'OTHER'];
@@ -287,6 +298,15 @@ const BookingManagementWizard = () => {
 
             const departureDates = Array.isArray(detailPayload?.data?.departure_dates) ? detailPayload.data.departure_dates : [];
             setReferences((current) => ({ ...current, departure_id: departureDates }));
+            const variantPrice = getPerPersonSellingPrice(detailPayload?.data) ?? getPerPersonSellingPrice(
+              (Array.isArray(payload?.data) ? payload.data : []).find((variant) => String(variant.id) === String(enquiry.variant_id))
+            );
+            if (variantPrice != null) {
+              setForm((current) => ({
+                ...current,
+                total_selling_price: String(calculateTotalSellingPrice(variantPrice, current)),
+              }));
+            }
 
             const enquiryDepartureDate = normalizeDateValue(enquiry.departure_date || enquiry.travel_date || enquiry.departure?.departure_date || '');
             const selectedDeparture = departureDates.find((departure) => (
@@ -372,6 +392,13 @@ const BookingManagementWizard = () => {
         if (response.status === 404) response = await apiCall(`/api/v1/admin/tour-details/${encodeURIComponent(option.value)}`, 'GET');
         const payload = await response.json().catch(() => ({}));
         const details = payload?.data || option.raw || {};
+        const variantPrice = getPerPersonSellingPrice(details) ?? getPerPersonSellingPrice(option.raw);
+        if (variantPrice != null) {
+          setForm((current) => ({
+            ...current,
+            total_selling_price: String(calculateTotalSellingPrice(variantPrice, current)),
+          }));
+        }
         const departureOptions = Array.isArray(details.departure_dates) ? details.departure_dates : [];
         setReferences((current) => ({ ...current, departure_id: departureOptions }));
         if (departureOptions.length > 0) {
@@ -484,7 +511,21 @@ const BookingManagementWizard = () => {
         type="text"
         inputMode={type === 'number' ? 'decimal' : undefined}
         value={form[key]}
-        onChange={(event) => updateForm(key, type === 'number' ? sanitizeNumericInput(event.target.value) : event.target.value)}
+        onChange={(event) => {
+          const value = type === 'number' ? sanitizeNumericInput(event.target.value) : event.target.value;
+          const travellerCountFields = ['adult_count', 'child_count', 'senior_count'];
+          if (travellerCountFields.includes(key)) {
+            const variant = (references.variant_id || []).find((item) => String(item.id) === String(form.variant_id));
+            const price = getPerPersonSellingPrice(variant);
+            setForm((current) => {
+              const next = { ...current, [key]: value };
+              if (price != null) next.total_selling_price = String(calculateTotalSellingPrice(price, next));
+              return next;
+            });
+            return;
+          }
+          updateForm(key, value);
+        }}
         className={inputClass}
       />
     </div>
@@ -1156,4 +1197,3 @@ const BookingManagementWizard = () => {
 };
 
 export default BookingManagementWizard;
-
