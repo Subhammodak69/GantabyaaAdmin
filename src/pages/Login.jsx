@@ -8,7 +8,10 @@ import {
   ArrowRight, 
   RotateCw,
   CheckCircle2, 
-  AlertCircle 
+  AlertCircle,
+  Compass,
+  MapPin,
+  Sparkles,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { apiCall, handleApiError } from '../utils/apiCall';
@@ -26,6 +29,18 @@ const Login = () => {
   const [resendTimer, setResendTimer] = useState(0);
   const [otpMeta, setOtpMeta] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, []);
 
   // If already authenticated, redirect to dashboard
   useEffect(() => {
@@ -167,181 +182,162 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4 relative overflow-hidden selection:bg-indigo-200 selection:text-indigo-900">
-      {/* Dynamic Background Glows */}
-      <div className="absolute top-[-15%] left-[-10%] w-[500px] h-[500px] rounded-full bg-blue-300/30 blur-[130px] pointer-events-none" />
-      <div className="absolute bottom-[-15%] right-[-10%] w-[500px] h-[500px] rounded-full bg-indigo-300/30 blur-[140px] pointer-events-none" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full bg-cyan-200/20 blur-[160px] pointer-events-none" />
+    <main className="admin-login-page relative flex h-[100dvh] w-full overflow-hidden bg-white selection:bg-teal-200 selection:text-teal-950">
+      <section className="admin-login-showcase relative hidden h-full w-[54%] flex-col justify-between overflow-hidden bg-[#092b35] px-12 py-10 text-white lg:flex xl:px-16 xl:py-12">
+        <div className="admin-showcase-glow admin-showcase-glow-one" />
+        <div className="admin-showcase-glow admin-showcase-glow-two" />
+        <div className="admin-showcase-grid" />
 
-      {/* Main Container Card */}
-      <div className="w-full max-w-md z-10">
-        <div className="bg-white/95 backdrop-blur-xl border border-slate-200 rounded-2xl shadow-xl shadow-slate-300/40 p-8 transition-all duration-300 hover:border-slate-300">
-          
-          {/* Brand Header */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-transparent shadow-none mb-4 group transition-transform duration-300 hover:scale-105 overflow-hidden">
-              <img src="/gantabyaa-transparent.png" alt="Gantabyaa" className="h-full w-full object-contain" />
+        <div className="relative z-10 flex items-center gap-3 admin-enter">
+          <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl bg-white/10 ring-1 ring-white/15 backdrop-blur">
+            <img src="/gantabyaa-transparent.png" alt="" className="h-10 w-10 object-contain" />
+          </div>
+          <div>
+            <p className="text-lg font-extrabold tracking-tight">Gantabyaa</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-teal-200">Travel operations</p>
+          </div>
+        </div>
+
+        <div className="relative z-10 max-w-2xl">
+          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-teal-100/15 bg-white/[0.07] px-3.5 py-2 text-xs font-semibold text-teal-100 backdrop-blur-sm admin-enter admin-enter-delay-one">
+            <Sparkles size={14} className="text-amber-300" />
+            Your command center for every journey
+          </div>
+          <h1 className="max-w-xl font-display text-5xl font-extrabold leading-[1.08] tracking-tight xl:text-6xl admin-enter admin-enter-delay-two">
+            Make every
+            <span className="block bg-gradient-to-r from-teal-200 via-cyan-100 to-amber-200 bg-clip-text text-transparent">journey count.</span>
+          </h1>
+          <p className="mt-5 max-w-md text-sm leading-6 text-slate-300/85 xl:text-base xl:leading-7 admin-enter admin-enter-delay-three">
+            A calmer way to oversee bookings, travelers and the details that make a great trip.
+          </p>
+
+          <div className="relative mt-9 h-44 max-w-lg xl:mt-11 xl:h-52">
+            <div className="admin-orbit admin-orbit-one" />
+            <div className="admin-orbit admin-orbit-two" />
+            <div className="admin-orbit-center"><Compass size={31} strokeWidth={1.4} /></div>
+            <div className="admin-map-point admin-map-point-one"><span /><span className="admin-map-label">COOCH BEHAR</span></div>
+            <div className="admin-map-point admin-map-point-two"><span /><span className="admin-map-label">YOUR NEXT JOURNEY</span></div>
+            <svg className="absolute inset-0 h-full w-full opacity-50" viewBox="0 0 500 210" fill="none" aria-hidden="true">
+              <path d="M46 160C104 160 106 56 188 56s77 112 145 112 69-90 128-90" stroke="url(#route)" strokeWidth="1.5" strokeDasharray="5 7" />
+              <path d="M24 185c58-8 86-41 119-30s37 28 75 20 58-44 101-36 72 9 130-18" stroke="white" strokeOpacity=".12" />
+              <defs><linearGradient id="route" x1="46" y1="105" x2="461" y2="105" gradientUnits="userSpaceOnUse"><stop stopColor="#F6C66A" /><stop offset=".5" stopColor="#75E0D0" /><stop offset="1" stopColor="#D8FBF4" /></linearGradient></defs>
+            </svg>
+            <div className="absolute bottom-2 left-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
+              <span className="h-px w-7 bg-teal-200/60" /> Thoughtfully managed, beautifully explored
             </div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 flex items-center justify-center gap-2">
-              Gantabyaa
-              <span className="text-xs uppercase px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-600 font-semibold tracking-wider">
-                Admin
-              </span>
-            </h1>
-            <p className="text-sm text-slate-500 mt-1.5">
-              Secure administrative access & management portal
+          </div>
+        </div>
+
+        <div className="relative z-10 flex items-center justify-between border-t border-white/10 pt-5 text-[11px] text-white/45">
+          <span>Gantabyaa operations portal</span>
+          <span className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,.8)]" />Secure workspace</span>
+        </div>
+      </section>
+
+      <section className="relative flex h-full min-w-0 flex-1 items-center justify-center overflow-hidden bg-[#f8fafb] px-5 py-5 sm:px-10 lg:px-12">
+        <div className="admin-form-glow admin-form-glow-one" />
+        <div className="admin-form-glow admin-form-glow-two" />
+        <div className="relative z-10 w-full max-w-[410px] admin-form-enter">
+          <div className="mb-7 flex items-center gap-3 lg:hidden">
+            <div className="grid h-11 w-11 place-items-center overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+              <img src="/gantabyaa-transparent.png" alt="" className="h-10 w-10 object-contain" />
+            </div>
+            <div><p className="font-extrabold text-slate-900">Gantabyaa</p><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-teal-700">Admin workspace</p></div>
+          </div>
+
+          <div className="mb-7">
+            <div className="mb-5 hidden h-1 w-12 rounded-full bg-gradient-to-r from-teal-600 to-amber-400 lg:block" />
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-teal-700">Welcome back</p>
+            <h2 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-slate-900 sm:text-[2.1rem]">
+              {step === 'REQUEST_OTP' ? 'Sign in to continue' : 'Check your inbox'}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              {step === 'REQUEST_OTP'
+                ? 'Access your workspace with a secure one-time passcode.'
+                : 'Enter the verification code sent to your account.'}
             </p>
           </div>
 
-          {/* Error Message Alert */}
           {errorMsg && (
-            <div className="mb-6 p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-600 text-sm">
-              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-rose-500" />
+            <div role="alert" className="mb-5 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-500" />
               <div className="leading-snug">{errorMsg}</div>
             </div>
           )}
 
-          {/* Form Content: Step 1 vs Step 2 */}
           {step === 'REQUEST_OTP' ? (
             <form onSubmit={handleRequestOtp} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">
-                  Admin Identifier
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <Mail className="w-4 h-4" />
-                  </div>
+                <label htmlFor="admin-identifier" className="mb-2 block text-xs font-bold text-slate-700">Admin email or phone</label>
+                <div className="admin-input-wrap">
+                  <Mail className="h-[18px] w-[18px] shrink-0 text-slate-400" />
                   <input
+                    id="admin-identifier"
                     type="text"
                     required
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder="Enter email or mobile number"
+                    placeholder="name@company.com or mobile"
                     disabled={loading || googleLoading}
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50"
+                    autoComplete="username"
+                    className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 disabled:opacity-50"
                   />
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1.5">
-                  We will send a one-time verification passcode to this address.
-                </p>
+                <p className="mt-2 text-[11px] text-slate-400">We’ll send a one-time passcode to verify it’s you.</p>
               </div>
 
-              <button
-                type="submit"
-                disabled={loading || googleLoading}
-                className="w-full mt-2 py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:from-blue-700 active:to-indigo-700 text-white font-semibold rounded-xl text-sm shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed group"
-              >
-                {loading ? (
-                  <>
-                    <RotateCw className="w-4 h-4 animate-spin" />
-                    <span>Requesting OTP...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Send Verification OTP</span>
-                    <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-                  </>
-                )}
+              <button type="submit" disabled={loading || googleLoading} className="admin-submit-button group">
+                {loading ? <><RotateCw className="h-4 w-4 animate-spin" /><span>Sending passcode…</span></> : <><span>Continue securely</span><ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></>}
               </button>
             </form>
           ) : (
             <form onSubmit={handleVerifyOtp} className="space-y-4">
-              <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex items-center justify-between text-xs text-slate-600">
-                <div className="flex items-center gap-2 truncate pr-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-xs text-slate-600">
+                <div className="flex min-w-0 items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
                   <span className="truncate">{identifier}</span>
-                  {otpMeta?.identifier_type && (
-                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-semibold border border-blue-200">
-                      {otpMeta.identifier_type}
-                    </span>
-                  )}
+                  {otpMeta?.identifier_type && <span className="rounded bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-teal-700">{otpMeta.identifier_type}</span>}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep('REQUEST_OTP');
-                    setOtp('');
-                    setErrorMsg('');
-                    setOtpMeta(null);
-                  }}
-                  disabled={googleLoading}
-                  className="text-blue-600 hover:text-blue-500 font-medium underline shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Change
-                </button>
+                <button type="button" onClick={() => { setStep('REQUEST_OTP'); setOtp(''); setErrorMsg(''); setOtpMeta(null); }} disabled={googleLoading} className="shrink-0 font-semibold text-teal-700 hover:text-teal-600 disabled:opacity-50">Change</button>
               </div>
-
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">
-                  6-Digit OTP Passcode
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <KeyRound className="w-4 h-4" />
-                  </div>
+                <label htmlFor="admin-otp" className="mb-2 block text-xs font-bold text-slate-700">One-time passcode</label>
+                <div className="admin-input-wrap">
+                  <KeyRound className="h-[18px] w-[18px] shrink-0 text-slate-400" />
                   <input
+                    id="admin-otp"
                     type="text"
                     required
                     maxLength={10}
                     value={otp}
                     onChange={(e) => setOtp(e.target.value)}
-                    placeholder="Enter received OTP"
+                    placeholder="Enter your passcode"
                     disabled={loading || googleLoading}
                     autoFocus
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 text-base font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50"
+                    autoComplete="one-time-code"
+                    className="min-w-0 flex-1 bg-transparent font-mono text-sm tracking-[0.2em] text-slate-900 outline-none placeholder:font-sans placeholder:tracking-normal placeholder:text-slate-400 disabled:opacity-50"
                   />
                 </div>
               </div>
-
-              <div className="flex items-center justify-between text-xs pt-1">
-                <span className="text-slate-500">Didn't receive code?</span>
-                {resendTimer > 0 ? (
-                  <span className="text-slate-400 font-mono">Resend in {resendTimer}s</span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleRequestOtp}
-                    disabled={loading || googleLoading}
-                    className="text-blue-600 hover:text-blue-500 font-semibold transition-colors disabled:opacity-50"
-                  >
-                    Resend OTP
-                  </button>
-                )}
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500">Didn’t receive it?</span>
+                {resendTimer > 0
+                  ? <span className="font-mono text-slate-400">Resend in {resendTimer}s</span>
+                  : <button type="button" onClick={handleRequestOtp} disabled={loading || googleLoading} className="font-semibold text-teal-700 hover:text-teal-600 disabled:opacity-50">Resend passcode</button>}
               </div>
-
-              <button
-                type="submit"
-                disabled={loading || googleLoading}
-                className="w-full mt-2 py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:from-emerald-700 active:to-teal-700 text-white font-semibold rounded-xl text-sm shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed group"
-              >
-                {loading ? (
-                  <>
-                    <RotateCw className="w-4 h-4 animate-spin" />
-                    <span>Verifying OTP...</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>Verify & Login</span>
-                  </>
-                )}
+              <button type="submit" disabled={loading || googleLoading} className="admin-submit-button admin-submit-button-verify group">
+                {loading ? <><RotateCw className="h-4 w-4 animate-spin" /><span>Verifying…</span></> : <><ShieldCheck className="h-4 w-4" /><span>Verify and sign in</span><ArrowRight className="ml-auto h-4 w-4 transition-transform group-hover:translate-x-1" /></>}
               </button>
             </form>
           )}
 
-          {/* Social Sign-in Divider */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-200"></div>
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-3 text-slate-400 font-medium">Or continue with</span>
-            </div>
+          <div className="my-5 flex items-center gap-3">
+            <span className="h-px flex-1 bg-slate-200" />
+            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Or sign in with</span>
+            <span className="h-px flex-1 bg-slate-200" />
           </div>
 
-          {/* Google OAuth Button */}
-          <div className="flex justify-center w-full">
+          <div className="flex min-h-[42px] w-full justify-center">
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
               onError={handleGoogleError}
@@ -353,27 +349,21 @@ const Login = () => {
             />
           </div>
 
-          {googleLoading && (
-            <div className="mt-3 flex items-center justify-center gap-2 text-sm text-slate-600">
-              <RotateCw className="h-4 w-4 animate-spin text-blue-500" />
-              <span>Waiting...</span>
-            </div>
-          )}
+          {googleLoading && <div className="mt-2 flex items-center justify-center gap-2 text-xs text-slate-500"><RotateCw className="h-3.5 w-3.5 animate-spin text-teal-600" /><span>Waiting for Google…</span></div>}
 
-          {/* Security Notice */}
-          <div className="mt-8 pt-6 border-t border-slate-200 flex items-center justify-center gap-2 text-xs text-slate-400 text-center">
-            <ShieldCheck className="w-4 h-4 text-slate-400 shrink-0" />
+          <div className="mt-6 flex items-center justify-center gap-2 border-t border-slate-200/80 pt-4 text-[11px] text-slate-400">
+            <ShieldCheck className="h-4 w-4 shrink-0 text-teal-600" />
             <span>Authorized Gantabyaa personnel only</span>
           </div>
-
+          <p className="mt-4 text-center text-[10px] text-slate-400">
+            Protected by secure token verification · © {new Date().getFullYear()} Gantabyaa
+          </p>
+          <div className="mt-4 hidden items-center justify-center gap-1.5 text-[10px] font-medium text-slate-400 sm:flex">
+            <MapPin className="h-3 w-3 text-teal-600" />Thoughtfully managing journeys since 1994
+          </div>
         </div>
-
-        {/* Footer info */}
-        <p className="text-center text-xs text-slate-400 mt-6">
-          Protected by end-to-end token verification &bull; Gantabyaa &copy; {new Date().getFullYear()}
-        </p>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 };
 
