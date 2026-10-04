@@ -9,6 +9,7 @@ export function createAdminRealtimeSocket({ token, onStatus, onEvent } = {}) {
   const socket = io(REALTIME_BASE, {
     path: "/socket.io",
     transports: ["websocket", "polling"],
+    autoConnect: false,
     auth: { token },
     reconnection: true,
     reconnectionAttempts: Infinity,
@@ -21,6 +22,7 @@ export function createAdminRealtimeSocket({ token, onStatus, onEvent } = {}) {
   socket.on("disconnect", () => onStatus?.("disconnected"));
   socket.on("connect_error", (error) => onStatus?.("error", error));
   socket.onAny((event, payload) => onEvent?.(event, payload));
+  socket.connect();
 
   return socket;
 }
@@ -39,4 +41,3 @@ export function createNotificationSocket(token, onMessage) {
   };
   return socket;
 }
-

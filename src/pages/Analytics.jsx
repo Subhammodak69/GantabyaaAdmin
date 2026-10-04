@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   BarChart3,
@@ -38,6 +38,28 @@ const durationFormat = value => {
   return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
 };
 const moneyFormat = value => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+const ANALYTICS_REALTIME_EVENTS = new Set([
+  'visitor_connected',
+  'visitor_disconnected',
+  'visitor_identified',
+  'visitor_location_updated',
+  'page_view',
+  'page_navigation',
+  'activity',
+  'click',
+  'session_updated',
+  'live_stats',
+  'analytics:visitor_identified',
+  'analytics.visitor_identified',
+  'analytics:session_started',
+  'analytics.session_started',
+  'analytics:session_heartbeat',
+  'analytics.session_heartbeat',
+  'analytics:session_ended',
+  'analytics.session_ended',
+  'analytics:visitor_event',
+  'analytics.visitor_event',
+]);
 
 function Card({ children, className = '' }) {
   return <section className={`rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 ${className}`}>{children}</section>;
@@ -82,6 +104,7 @@ const Analytics = () => {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [error, setError] = useState('');
   const [lastRealtimeEvent, setLastRealtimeEvent] = useState(null);
+  const realtimeRefreshTimer = useRef(null);
 
   const loadAnalytics = useCallback(async () => {
     setLoading(true);
@@ -130,13 +153,19 @@ const Analytics = () => {
     const handleRealtimeEvent = event => {
       const detail = event.detail || {};
       setLastRealtimeEvent({ event: detail.event, payload: detail.payload, receivedAt: new Date() });
-      if (['visitor_connected', 'visitor_disconnected', 'visitor_identified', 'visitor_location_updated', 'live_stats', 'analytics:visitor_identified', 'analytics:session_started', 'analytics:visitor_event'].includes(detail.event)) {
-        loadAnalytics();
-        loadVisitors();
+      if (ANALYTICS_REALTIME_EVENTS.has(detail.event)) {
+        window.clearTimeout(realtimeRefreshTimer.current);
+        realtimeRefreshTimer.current = window.setTimeout(() => {
+          loadAnalytics();
+          loadVisitors();
+        }, 250);
       }
     };
     window.addEventListener('cobtravels:realtime:event', handleRealtimeEvent);
-    return () => window.removeEventListener('cobtravels:realtime:event', handleRealtimeEvent);
+    return () => {
+      window.removeEventListener('cobtravels:realtime:event', handleRealtimeEvent);
+      window.clearTimeout(realtimeRefreshTimer.current);
+    };
   }, [loadAnalytics, loadVisitors]);
 
   const openVisitor = async visitor => {
