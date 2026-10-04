@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ManagementTable from '../component/common/ManagementTable';
 import toast from 'react-hot-toast';
-import { FileText, Plus, Trash2, RefreshCw, Eye, Pencil } from 'lucide-react';
+import { FileText, Plus, Trash2, RefreshCw, Eye, Pencil, Download } from 'lucide-react';
 import Modal from '../component/common/Modal';
 import ConfirmDeleteModal from '../component/common/ConfirmDeleteModal';
 import MediaViewerModal from '../component/common/MediaViewerModal';
@@ -10,9 +10,18 @@ import SelectField from '../component/common/SelectField';
 import Pagination from '../component/common/PaginationComponent';
 import ActionMenu from '../component/common/ActionMenu';
 import { apiCall, handleApiError } from '../utils/apiCall';
+import usePrivateDocumentFile, { downloadPrivateDocument } from '../hooks/usePrivateDocumentFile';
 
-const documentTypes = ['ID_PROOF', 'ADDRESS_PROOF', 'PASSPORT', 'PAN_CARD', 'BANK_ACCOUNT'];
+const documentTypes = ['ID_PROOF', 'ADDRESS_PROOF', 'TOUR_DOCUMENT', 'OTHER'];
 const documentTypeOptions = documentTypes.map((type) => ({ value: type, label: type }));
+const defaultFilters = {
+  from_date: '',
+  to_date: '',
+  document_type: '',
+  status: 'active',
+  customer_id: '',
+  uploaded_by: '',
+};
 
 const defaultForm = {
   customer_id: '',
@@ -57,6 +66,7 @@ const buildCustomerLabel = (customer) => {
 };
 
 const DocumentPreviewContent = ({ doc }) => {
+  const { fileUrl, loading, error } = usePrivateDocumentFile(doc);
   if (!doc) return null;
   const fileType = getFileType(doc.file_url || '', doc.file_name || '');
   return (
@@ -76,23 +86,27 @@ const DocumentPreviewContent = ({ doc }) => {
 
       {/* media area */}
       <div className="flex flex-1 items-center justify-center p-3">
-        {fileType === 'pdf' ? (
+        {loading ? (
+          <p className="text-sm text-slate-300">Loading document...</p>
+        ) : error ? (
+          <p className="text-sm text-red-300">{error}</p>
+        ) : !fileUrl ? null : fileType === 'pdf' ? (
           <iframe
-            src={doc.file_url}
+            src={fileUrl}
             title={doc.title || 'PDF preview'}
             style={{ border: 'none', background: '#fff' }}
             className="h-[80vh] w-full max-w-5xl rounded-xl"
           />
         ) : fileType === 'video' ? (
           <video
-            src={doc.file_url}
+            src={fileUrl}
             controls
             autoPlay
             className="max-h-[80vh] max-w-full rounded-xl object-contain shadow-xl"
           />
         ) : (
           <img
-            src={doc.file_url}
+            src={fileUrl}
             alt={doc.title || doc.file_name || 'Document'}
             className="max-h-[80vh] w-auto max-w-full rounded-xl object-contain shadow-xl"
           />
@@ -110,6 +124,7 @@ const DocumentManagement = () => {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [filters, setFilters] = useState(defaultFilters);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formState, setFormState] = useState(defaultForm);
@@ -128,16 +143,20 @@ const DocumentManagement = () => {
   // ---- Customer select (paginated, lazy-loaded on menu open, more on scroll) ----
   const [customerOptions, setCustomerOptions] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [selectedFilterCustomer, setSelectedFilterCustomer] = useState(null);
   const [customerPage, setCustomerPage] = useState(1);
   const [customerHasMore, setCustomerHasMore] = useState(true);
   const [customerLoading, setCustomerLoading] = useState(false);
   const [customerLoaded, setCustomerLoaded] = useState(false);
 
   // ---- Fetch (server-side pagination) ----
-  const loadDocuments = async (page = currentPage, limit = itemsPerPage) => {
+  const loadDocuments = async (page = currentPage, limit = itemsPerPage, activeFilters = filters) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), page_size: String(limit) });
+      Object.entries(activeFilters).forEach(([key, value]) => {
+        if (value) params.set(key, value);
+      });
       const response = await apiCall(`/api/v1/admin/documents?${params.toString()}`, 'GET');
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -179,6 +198,32 @@ const DocumentManagement = () => {
   const handleLimitChange = (limit) => {
     setItemsPerPage(limit);
     loadDocuments(1, limit);
+  };
+
+  const handleApplyFilters = () => {
+    if (Boolean(filters.from_date) !== Boolean(filters.to_date)) {
+      toast.error('Select both dates to filter by upload date');
+      return;
+    }
+    if (filters.from_date && filters.to_date < filters.from_date) {
+      toast.error('End date must be on or after start date');
+      return;
+    }
+    loadDocuments(1, itemsPerPage, filters);
+  };
+
+  const handleResetFilters = () => {
+    setFilters(defaultFilters);
+    setSelectedFilterCustomer(null);
+    loadDocuments(1, itemsPerPage, defaultFilters);
+  };
+
+  const handleDownload = async (doc) => {
+    try {
+      await downloadPrivateDocument(doc);
+    } catch (error) {
+      handleApiError(error, 'Unable to download document');
+    }
   };
 
   // ---- Customers (for the customer select field) ----
@@ -366,12 +411,14 @@ const DocumentManagement = () => {
   };
 
   // ---- Selection ----
-  const allOnPageSelected = documents.length > 0 && documents.every((doc) => selectedIds.has(doc.id));
+  const selectableDocuments = documents.filter((doc) => doc.is_active);
+  const allOnPageSelected = selectableDocuments.length > 0
+    && selectableDocuments.every((doc) => selectedIds.has(doc.id));
 
   const toggleSelectAll = () => {
     setSelectedIds((current) => {
       if (allOnPageSelected) return new Set();
-      return new Set(documents.map((doc) => doc.id));
+      return new Set(selectableDocuments.map((doc) => doc.id));
     });
   };
 
@@ -403,7 +450,7 @@ const DocumentManagement = () => {
         onConfirm={confirmDeleteDocuments}
         title={deleteIds.length > 1 ? 'Delete selected documents' : 'Delete document'}
         itemLabel={deleteTarget?.file_name || (deleteIds.length > 1 ? `${deleteIds.length} selected documents` : 'this document')}
-        message={deleteIds.length > 1 ? `This will permanently delete ${deleteIds.length} selected documents. This action cannot be undone.` : `This will permanently delete ${deleteTarget?.file_name || 'this document'} from the system.`}
+        message={deleteIds.length > 1 ? `This will mark ${deleteIds.length} selected documents as deleted.` : `This will mark ${deleteTarget?.file_name || 'this document'} as deleted.`}
         confirming={bulkDeleting}
         confirmText={deleteIds.length > 1 ? 'Delete selected' : 'Delete document'}
       />
@@ -441,6 +488,85 @@ const DocumentManagement = () => {
       </div>
 
       <div className="mt-5 px-4">
+        <div className="mb-4 grid gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+            From date
+            <input
+              type="date"
+              value={filters.from_date}
+              onChange={(event) => setFilters((current) => ({ ...current, from_date: event.target.value }))}
+              className="mt-1 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            />
+          </label>
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+            To date
+            <input
+              type="date"
+              value={filters.to_date}
+              onChange={(event) => setFilters((current) => ({ ...current, to_date: event.target.value }))}
+              className="mt-1 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            />
+          </label>
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+            Document type
+            <select
+              value={filters.document_type}
+              onChange={(event) => setFilters((current) => ({ ...current, document_type: event.target.value }))}
+              className="mt-1 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            >
+              <option value="">All types</option>
+              {documentTypes.map((type) => <option key={type} value={type}>{type.replace(/_/g, ' ')}</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+            Status
+            <select
+              value={filters.status}
+              onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
+              className="mt-1 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            >
+              <option value="active">Active</option>
+              <option value="deleted">Deleted</option>
+              <option value="all">All</option>
+            </select>
+          </label>
+          <div className="text-xs font-medium text-gray-600 dark:text-gray-300">
+            Customer
+            <SelectField
+              options={customerOptions}
+              value={selectedFilterCustomer}
+              onChange={(selected) => {
+                setSelectedFilterCustomer(selected);
+                setFilters((current) => ({ ...current, customer_id: selected?.value || '' }));
+              }}
+              onMenuOpen={handleCustomerMenuOpen}
+              onMenuScrollToBottom={handleCustomerMenuScrollToBottom}
+              isLoading={customerLoading}
+              isSearchable
+              isClearable
+              placeholder="All customers"
+              noOptionsMessage={() => (customerLoading ? 'Loading...' : 'No customers found')}
+              menuPlacement="auto"
+              classNamePrefix="react-select"
+            />
+          </div>
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+            Uploaded by
+            <select
+              value={filters.uploaded_by}
+              onChange={(event) => setFilters((current) => ({ ...current, uploaded_by: event.target.value }))}
+              className="mt-1 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            >
+              <option value="">Anyone</option>
+              <option value="CUSTOMER">Customer</option>
+              <option value="ADMIN">Admin</option>
+            </select>
+          </label>
+          <div className="flex items-end gap-2">
+            <button type="button" onClick={handleApplyFilters} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">Apply filters</button>
+            <button type="button" onClick={handleResetFilters} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">Reset</button>
+          </div>
+        </div>
         <div className="flex items-center justify-between gap-3">
           {selectedIds.size > 0 ? (
             <button
@@ -479,6 +605,7 @@ const DocumentManagement = () => {
                   </th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Document</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Customer</th>
+                  <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Uploaded by</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Type</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Uploaded</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Size</th>
@@ -490,14 +617,15 @@ const DocumentManagement = () => {
                 {documents.map((doc) => (
                   <tr
                     key={doc.id}
-                    onClick={() => doc.file_url && setPreviewDoc(doc)}
-                    className={`transition-colors ${doc.file_url ? 'cursor-pointer hover:bg-emerald-50/60 dark:hover:bg-emerald-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}
+                    onClick={() => doc.is_active && doc.file_url && setPreviewDoc(doc)}
+                    className={`transition-colors ${doc.is_active && doc.file_url ? 'cursor-pointer hover:bg-emerald-50/60 dark:hover:bg-emerald-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}
                   >
                     <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={selectedIds.has(doc.id)}
                         onChange={() => toggleSelectOne(doc.id)}
+                        disabled={!doc.is_active}
                         className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                       />
                     </td>
@@ -518,6 +646,13 @@ const DocumentManagement = () => {
                       <div className="font-medium">{doc.customer_name || doc.customer_id || 'N/A'}</div>
                     </td>
 
+                    <td className="px-4 py-4 text-sm text-gray-700 dark:text-gray-300">
+                      <div className="font-medium">{doc.uploader_name || 'N/A'}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {doc.type === 'incoming' ? 'Customer upload' : 'Admin upload'}
+                      </div>
+                    </td>
+
                     <td className="px-4 py-4">
                       <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
                         {doc.document_type || 'N/A'}
@@ -535,19 +670,27 @@ const DocumentManagement = () => {
                             {
                               label: 'Preview Document',
                               icon: <Eye className="h-4 w-4 text-emerald-500" />,
-                              onClick: () => doc.file_url && setPreviewDoc(doc),
-                              disabled: !doc.file_url,
+                              onClick: () => doc.is_active && doc.file_url && setPreviewDoc(doc),
+                              disabled: !doc.is_active || !doc.file_url,
+                            },
+                            {
+                              label: 'Download Document',
+                              icon: <Download className="h-4 w-4 text-sky-500" />,
+                              onClick: () => handleDownload(doc),
+                              disabled: !doc.is_active,
                             },
                             {
                               label: 'Edit Document',
                               icon: <Pencil className="h-4 w-4 text-indigo-500" />,
                               onClick: () => openEditModal(doc),
+                              disabled: !doc.is_active,
                             },
                             {
                               label: 'Delete Document',
                               icon: <Trash2 className="h-4 w-4 text-red-500" />,
                               className: 'text-red-600 hover:text-red-700 dark:text-red-400',
                               onClick: () => handleDelete(doc),
+                              disabled: !doc.is_active,
                             },
                           ]}
                         />

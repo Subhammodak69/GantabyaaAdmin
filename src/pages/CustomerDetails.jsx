@@ -20,6 +20,7 @@ import {
   Plus,
   RefreshCw,
   Eye,
+  Download,
   Heart,
   BookOpen,
 } from 'lucide-react';
@@ -33,6 +34,7 @@ import ActionMenu from '../component/common/ActionMenu';
 import Pagination from '../component/common/PaginationComponent';
 import { apiCall, handleApiError } from '../utils/apiCall';
 import { useEnums } from '../context/EnumsContext';
+import usePrivateDocumentFile, { downloadPrivateDocument } from '../hooks/usePrivateDocumentFile';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -57,6 +59,14 @@ const sourceColors = {
   IMPORT: 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
   REFERRAL: 'border-pink-200 bg-pink-50 text-pink-700 dark:border-pink-800 dark:bg-pink-900/30 dark:text-pink-300',
   OTHER: 'border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
+};
+
+const handleDocumentDownload = async (doc) => {
+  try {
+    await downloadPrivateDocument(doc);
+  } catch (error) {
+    handleApiError(error, 'Unable to download document');
+  }
 };
 
 const statusColors = {
@@ -164,6 +174,41 @@ const getFileType = (url = '', fileName = '') => {
   return 'image';
 };
 
+const CustomerDocumentPreviewContent = ({ doc }) => {
+  const fileType = getFileType(doc.file_url || '', doc.file_name || '');
+  const { fileUrl, loading, error } = usePrivateDocumentFile(doc);
+
+  return (
+    <div style={{ background: '#000' }} className="flex min-h-full w-full flex-col">
+      <div
+        style={{ background: 'rgba(0,0,0,0.7)' }}
+        className="flex shrink-0 items-center justify-between border-b border-white/10 px-6 py-3"
+      >
+        <div className="min-w-0 pr-4">
+          <p className="truncate text-sm font-semibold text-white">{doc.title || doc.file_name || 'Document preview'}</p>
+          {doc.description && <p className="truncate text-xs text-slate-400">{doc.description}</p>}
+        </div>
+        <span className="shrink-0 text-xs text-slate-400">
+          {doc.document_type} · {formatFileSize(doc.file_size)}
+        </span>
+      </div>
+      <div className="flex flex-1 items-center justify-center p-3">
+        {loading ? (
+          <p className="text-sm text-slate-300">Loading document...</p>
+        ) : error ? (
+          <p className="text-sm text-red-300">{error}</p>
+        ) : !fileUrl ? null : fileType === 'pdf' ? (
+          <iframe src={fileUrl} title={doc.title || 'PDF preview'} style={{ border: 'none', background: '#fff' }} className="h-[80vh] w-full max-w-5xl rounded-xl" />
+        ) : fileType === 'video' ? (
+          <video src={fileUrl} controls autoPlay className="max-h-[80vh] max-w-full rounded-xl object-contain shadow-xl" />
+        ) : (
+          <img src={fileUrl} alt={doc.title || doc.file_name || 'Document'} className="max-h-[80vh] w-auto max-w-full rounded-xl object-contain shadow-xl" />
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const CustomerDetails = () => {
@@ -252,11 +297,16 @@ const CustomerDetails = () => {
     setTabLoading(true);
     setTabError('');
     try {
-      const params = new URLSearchParams({ tab: tabConfig.tabParam, page: String(page), page_size: String(pageSize) });
-      const response = await apiCall(
-        `/api/v1/admin/customers/${customerId}?${params}`,
-        'GET'
+      const isDocumentsTab = tabKey === 'documents';
+      const params = new URLSearchParams(
+        isDocumentsTab
+          ? { page: String(page), page_size: String(pageSize), status: 'active', customer_id: customerId }
+          : { tab: tabConfig.tabParam, page: String(page), page_size: String(pageSize) }
       );
+      const endpoint = isDocumentsTab
+        ? `/api/v1/admin/documents?${params}`
+        : `/api/v1/admin/customers/${customerId}?${params}`;
+      const response = await apiCall(endpoint, 'GET');
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload?.success === false) {
         throw new Error(payload?.message || payload?.detail || `Unable to load ${tabConfig.label.toLowerCase()}`);
@@ -281,7 +331,7 @@ const CustomerDetails = () => {
       setTabPagination((previous) => ({
         ...previous,
         [tabKey]: {
-          page: Number(pagination.page ?? result?.page ?? page) || page,
+          page: Number(pagination.current_page ?? pagination.page ?? result?.page ?? page) || page,
           page_size: responsePageSize,
           total_items: totalItems,
           total_pages: totalPages,
@@ -757,7 +807,7 @@ const CustomerDetails = () => {
                           <td className="px-4 py-3.5">
                             <div className="text-xs">
                               <p className="font-medium text-gray-800 dark:text-gray-200">{doc.uploader_name || doc.customer_name || 'Customer'}</p>
-                              <p className="text-gray-400 capitalize">{doc.uploaded_by || 'CUSTOMER'}</p>
+                              <p className="text-gray-400">{doc.type === 'incoming' ? 'Customer' : 'Admin'}</p>
                             </div>
                           </td>
 
@@ -778,6 +828,11 @@ const CustomerDetails = () => {
                                     label: 'Preview Document',
                                     icon: <Eye className="h-4 w-4 text-indigo-500" />,
                                     onClick: () => setPreviewDoc(doc),
+                                  },
+                                  {
+                                    label: 'Download Document',
+                                    icon: <Download className="h-4 w-4 text-sky-500" />,
+                                    onClick: () => handleDocumentDownload(doc),
                                   },
                                 ]}
                               />
@@ -1308,7 +1363,7 @@ const CustomerDetails = () => {
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Document type</label>
             <SelectField
-              options={['ID_PROOF', 'ADDRESS_PROOF', 'PASSPORT', 'PAN_CARD', 'BANK_ACCOUNT'].map((type) => ({ value: type, label: type }))}
+              options={['ID_PROOF', 'ADDRESS_PROOF', 'TOUR_DOCUMENT', 'OTHER'].map((type) => ({ value: type, label: type }))}
               value={{ value: documentUploadForm.document_type, label: documentUploadForm.document_type }}
               onChange={(selected) => setDocumentUploadForm((current) => ({ ...current, document_type: selected?.value || 'ID_PROOF' }))}
               isSearchable={false}
@@ -1353,52 +1408,7 @@ const CustomerDetails = () => {
 
       {/* ── Document Preview Modal (MediaViewerModal) ── */}
       <MediaViewerModal isOpen={!!previewDoc} onClose={() => setPreviewDoc(null)}>
-        {previewDoc && (() => {
-          const fileType = getFileType(previewDoc.file_url || '', previewDoc.file_name || '');
-          return (
-            <div style={{ background: '#000' }} className="flex min-h-full w-full flex-col">
-              <div
-                style={{ background: 'rgba(0,0,0,0.7)' }}
-                className="flex shrink-0 items-center justify-between px-6 py-3 border-b border-white/10"
-              >
-                <div className="min-w-0 pr-4">
-                  <p className="truncate text-sm font-semibold text-white">
-                    {previewDoc.title || previewDoc.file_name || 'Document preview'}
-                  </p>
-                  {previewDoc.description && (
-                    <p className="truncate text-xs text-slate-400">{previewDoc.description}</p>
-                  )}
-                </div>
-                <span className="shrink-0 text-xs text-slate-400">
-                  {previewDoc.document_type} · {formatFileSize(previewDoc.file_size)}
-                </span>
-              </div>
-              <div className="flex flex-1 items-center justify-center p-3">
-                {fileType === 'pdf' ? (
-                  <iframe
-                    src={previewDoc.file_url}
-                    title={previewDoc.title || 'PDF preview'}
-                    style={{ border: 'none', background: '#fff' }}
-                    className="h-[80vh] w-full max-w-5xl rounded-xl"
-                  />
-                ) : fileType === 'video' ? (
-                  <video
-                    src={previewDoc.file_url}
-                    controls
-                    autoPlay
-                    className="max-h-[80vh] max-w-full rounded-xl object-contain shadow-xl"
-                  />
-                ) : (
-                  <img
-                    src={previewDoc.file_url}
-                    alt={previewDoc.title || previewDoc.file_name || 'Document'}
-                    className="max-h-[80vh] w-auto max-w-full rounded-xl object-contain shadow-xl"
-                  />
-                )}
-              </div>
-            </div>
-          );
-        })()}
+        {previewDoc && <CustomerDocumentPreviewContent doc={previewDoc} />}
       </MediaViewerModal>
 
       {/* ── Enquiry Details Modal ── */}
