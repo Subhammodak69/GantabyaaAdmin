@@ -17,6 +17,7 @@ import {
   Wallet,
   BarChart3,
   Coins,
+  Archive,
 } from "lucide-react";
 import { useLocation, Link } from "react-router-dom";
 
@@ -55,6 +56,7 @@ const Sidebar = ({
       items: [
         { icon: CalendarCheck, label: "Bookings", path: "/bookings" },
         { icon: Wallet, label: "Financial Management", path: "/financial" },
+        { icon: Archive, label: "Backups", path: "/backups" },
         { icon: FileText, label: "Document Management", path: "/document-management" },
       ],
     },

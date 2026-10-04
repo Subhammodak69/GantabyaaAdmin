@@ -35,6 +35,7 @@ const ReferralsConfiguration = lazy(() => import('./pages/ReferralsConfiguration
 const RulesRegulations = lazy(() => import('./pages/RulesRegulations'));
 const PointsManagement = lazy(() => import('./pages/PointsManagement'));
 const FinancialManagement = lazy(() => import('./pages/FinancialManagement'));
+const BackupManagement = lazy(() => import('./pages/BackupManagement'));
 const ServerUnavailable = lazy(() => import('./pages/ServerUnavailable'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
@@ -76,6 +77,7 @@ function App() {
             <Route path="/rules-regulations" element={<RulesRegulations />} />
             <Route path="/points" element={<PointsManagement />} />
             <Route path="/financial" element={<FinancialManagement />} />
+            <Route path="/backups" element={<BackupManagement />} />
             <Route path="/enquiries" element={<EnquiryManagement />} />
             <Route path="/enquiries/:enquiryId/lead" element={<LeadManagement />} />
             <Route path="/leads/:leadId" element={<LeadManagement />} />
