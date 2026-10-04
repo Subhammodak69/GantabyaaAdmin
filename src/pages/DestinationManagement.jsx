@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ManagementTable from '../component/common/ManagementTable';
 import toast from 'react-hot-toast';
 import {
@@ -36,6 +37,7 @@ const defaultForm = {
 };
 
 const DestinationManagement = () => {
+  const navigate = useNavigate();
   const [destinations, setDestinations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -231,6 +233,12 @@ const DestinationManagement = () => {
     });
   }, [destinations, searchTerm]);
 
+  const handleDestinationCountClick = (destination, type) => {
+    const route = type === 'hotel' ? '/hotels' : '/tour-packages';
+    const params = new URLSearchParams({ destination_id: destination.id });
+    navigate(`${route}?${params.toString()}`);
+  };
+
   const inputClass =
     'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200';
 
@@ -344,6 +352,9 @@ const DestinationManagement = () => {
                     Type
                   </th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">
+                    Linked Records
+                  </th>
+                  <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">
                     Status
                   </th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-700 dark:text-gray-200">
@@ -414,6 +425,28 @@ const DestinationManagement = () => {
                         )}
                         {dest.is_domestic ? 'Domestic' : 'International'}
                       </span>
+                    </td>
+
+                    {/* Linked Records */}
+                    <td className="px-4 py-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleDestinationCountClick(dest, 'hotel')}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-900/40 dark:bg-indigo-900/20 dark:text-indigo-300"
+                        >
+                          <Home className="h-3 w-3" />
+                          {Number(dest.hotel_count || 0)} Hotels
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDestinationCountClick(dest, 'tour')}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700 transition hover:bg-violet-100 dark:border-violet-900/40 dark:bg-violet-900/20 dark:text-violet-300"
+                        >
+                          <MapPin className="h-3 w-3" />
+                          {Number(dest.tour_package_count || 0)} Packages
+                        </button>
+                      </div>
                     </td>
 
                     {/* Active / Inactive */}

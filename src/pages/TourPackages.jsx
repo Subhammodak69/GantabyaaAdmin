@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ManagementTable from '../component/common/ManagementTable';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Plus, Package2, Pencil, Trash2, Search, RefreshCw, Layers, Filter, X } from 'lucide-react';
 import Modal from '../component/common/Modal';
@@ -27,6 +27,7 @@ const defaultForm = {
 
 const TourPackages = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -43,7 +44,7 @@ const TourPackages = () => {
   const [formState, setFormState] = useState(defaultForm);
   const [destinations, setDestinations] = useState([]);
   const [destLoading, setDestLoading] = useState(false);
-  const [selectedDestination, setSelectedDestination] = useState('');
+  const [selectedDestination, setSelectedDestination] = useState(() => searchParams.get('destination_id') || '');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const loadPackages = useCallback(async (page = currentPage, limit = itemsPerPage, destinationId = selectedDestination) => {
@@ -90,12 +91,29 @@ const TourPackages = () => {
   }, []);
 
   useEffect(() => {
-    loadPackages(currentPage, itemsPerPage);
-  }, [loadPackages, currentPage, itemsPerPage]);
+    const nextDestination = searchParams.get('destination_id') || '';
+    setSelectedDestination((current) => (current === nextDestination ? current : nextDestination));
+  }, [searchParams]);
+
+  useEffect(() => {
+    loadPackages(currentPage, itemsPerPage, selectedDestination);
+  }, [loadPackages, currentPage, itemsPerPage, selectedDestination]);
 
   useEffect(() => {
     loadDestinations();
   }, [loadDestinations]);
+
+  const syncSelectedDestination = useCallback((nextValue) => {
+    const normalized = nextValue || '';
+    setSelectedDestination(normalized);
+    const nextParams = new URLSearchParams(searchParams);
+    if (!normalized) {
+      nextParams.delete('destination_id');
+    } else {
+      nextParams.set('destination_id', normalized);
+    }
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const resetForm = () => {
     setFormState(defaultForm);
@@ -290,7 +308,7 @@ const TourPackages = () => {
               type="button"
               onClick={() => {
                 setSearchTerm('');
-                setSelectedDestination('');
+                syncSelectedDestination('');
                 setCurrentPage(1);
                 loadPackages(1, itemsPerPage, '');
               }}
@@ -319,7 +337,7 @@ const TourPackages = () => {
             <button
               type="button"
               onClick={() => {
-                setSelectedDestination('');
+                syncSelectedDestination('');
                 setCurrentPage(1);
                 loadPackages(1, itemsPerPage, '');
                 setIsFilterOpen(false);
@@ -350,7 +368,7 @@ const TourPackages = () => {
               }
               onChange={(selected) => {
                 const newDest = selected?.value || '';
-                setSelectedDestination(newDest);
+                syncSelectedDestination(newDest);
                 setCurrentPage(1);
                 loadPackages(1, itemsPerPage, newDest);
               }}

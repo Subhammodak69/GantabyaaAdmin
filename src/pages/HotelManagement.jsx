@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import ManagementTable from '../component/common/ManagementTable';
 import toast from 'react-hot-toast';
 import {
@@ -38,6 +39,7 @@ const defaultForm = {
 
 const HotelManagement = () => {
   const { getEnumOptions } = useEnums();
+  const [searchParams, setSearchParams] = useSearchParams();
   const categoryOptions = getEnumOptions('HotelCategory');
   const [hotels, setHotels] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -46,7 +48,7 @@ const HotelManagement = () => {
   const [editingHotel, setEditingHotel] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
-  const [destinationFilter, setDestinationFilter] = useState('ALL');
+  const [destinationFilter, setDestinationFilter] = useState(() => searchParams.get('destination_id') || 'ALL');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   // Pagination state
@@ -77,10 +79,13 @@ const HotelManagement = () => {
 
   // Load Hotels from API
   const loadHotels = useCallback(
-    async (page = currentPage, limit = itemsPerPage) => {
+    async (page = currentPage, limit = itemsPerPage, destinationId = destinationFilter) => {
       setLoading(true);
       try {
         const queryParams = new URLSearchParams({ page, page_size: limit });
+        if (destinationId && destinationId !== 'ALL') {
+          queryParams.set('destination_id', destinationId);
+        }
         const response = await apiCall(`/api/v1/admin/hotels?${queryParams.toString()}`, 'GET');
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
@@ -99,7 +104,7 @@ const HotelManagement = () => {
         setLoading(false);
       }
     },
-    [currentPage, itemsPerPage]
+    [currentPage, destinationFilter, itemsPerPage]
   );
 
   // Load Destinations for Dropdowns
@@ -120,12 +125,29 @@ const HotelManagement = () => {
   }, []);
 
   useEffect(() => {
-    loadHotels(currentPage, itemsPerPage);
-  }, [loadHotels, currentPage, itemsPerPage]);
+    loadHotels(currentPage, itemsPerPage, destinationFilter);
+  }, [loadHotels, currentPage, destinationFilter, itemsPerPage]);
+
+  useEffect(() => {
+    const nextDestination = searchParams.get('destination_id') || 'ALL';
+    setDestinationFilter((current) => (current === nextDestination ? current : nextDestination));
+  }, [searchParams]);
 
   useEffect(() => {
     loadDestinations();
   }, [loadDestinations]);
+
+  const syncDestinationFilter = useCallback((nextValue) => {
+    const normalized = nextValue && nextValue !== 'ALL' ? nextValue : 'ALL';
+    setDestinationFilter(normalized);
+    const nextParams = new URLSearchParams(searchParams);
+    if (normalized === 'ALL') {
+      nextParams.delete('destination_id');
+    } else {
+      nextParams.set('destination_id', normalized);
+    }
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const resetForm = () => {
     setFormState(defaultForm);
@@ -465,7 +487,7 @@ const HotelManagement = () => {
               onClick={() => {
                 setSearchTerm('');
                 setCategoryFilter('ALL');
-                setDestinationFilter('ALL');
+                syncDestinationFilter('ALL');
               }}
               className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-dashed border-gray-300 px-2.5 py-2.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700 sm:px-3"
             >
@@ -493,7 +515,7 @@ const HotelManagement = () => {
               type="button"
               onClick={() => {
                 setCategoryFilter('ALL');
-                setDestinationFilter('ALL');
+                syncDestinationFilter('ALL');
                 setIsFilterOpen(false);
               }}
               className="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300"
@@ -527,7 +549,7 @@ const HotelManagement = () => {
             <SelectField
               options={[{ value: 'ALL', label: 'All Destinations' }, ...destinations]}
               value={[{ value: 'ALL', label: 'All Destinations' }, ...destinations].find((d) => d.value === destinationFilter)}
-              onChange={(sel) => setDestinationFilter(sel?.value || 'ALL')}
+              onChange={(sel) => syncDestinationFilter(sel?.value || 'ALL')}
               isLoading={destLoading}
               placeholder="Filter destination"
               menuPlacement="auto"
