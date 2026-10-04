@@ -54,6 +54,36 @@ const normalizeQuotation = (quotation) => ({
   itinerary: Array.isArray(quotation?.itinerary) ? quotation.itinerary.map((day) => ({ ...day, date: day.date ? day.date.slice(0, 10) : '' })) : [],
 });
 
+const getVariantDetail = (payload) => {
+  const data = payload?.data || {};
+  return { ...data, ...(data.variant || {}), ...(data.details || {}), ...(data.tour_detail || {}), ...(data.tour_details || {}) };
+};
+const getQuotationText = (source) => {
+  if (!Array.isArray(source)) return source == null ? undefined : String(source);
+  return source.map((item) => typeof item === 'string' ? item : item?.text || item?.value || item?.name || '')
+    .filter(Boolean)
+    .join('\n');
+};
+const getVariantQuotationText = (detail, field) => {
+  const aliases = field === 'inclusion' ? ['inclusions', 'inclusion'] : ['exclusions', 'exclusion'];
+  const key = aliases.find((candidate) => Object.prototype.hasOwnProperty.call(detail, candidate));
+  return key ? getQuotationText(detail[key]) : undefined;
+};
+const getPreferredDeparture = (detail, preferredDate) => {
+  const dates = [detail?.departure_dates, detail?.departures, detail?.dates]
+    .flatMap((source) => Array.isArray(source) ? source : Array.isArray(source?.items) ? source.items : []);
+  const getDate = (departure) => String(departure.departure_date || departure.date || departure.start_date || departure.travel_date || '').slice(0, 10);
+  const preferred = dates.find((departure) => preferredDate && getDate(departure) === preferredDate.slice(0, 10));
+  if (preferred) return preferred;
+  const upcoming = dates.filter((departure) => getDate(departure)).sort((left, right) => getDate(left).localeCompare(getDate(right)));
+  const today = new Date().toISOString().slice(0, 10);
+  return upcoming.find((departure) => getDate(departure) >= today && Number(departure.available_seats ?? 1) > 0)
+    || upcoming.find((departure) => getDate(departure) >= today)
+    || upcoming.find((departure) => Number(departure.available_seats ?? 1) > 0)
+    || upcoming[0]
+    || null;
+};
+
 const QuotationDetails = () => {
   const navigate = useNavigate();
   const { quotationId } = useParams();
@@ -81,6 +111,8 @@ const QuotationDetails = () => {
   const [referencesLoading, setReferencesLoading] = useState(false);
   const [variantsLoading, setVariantsLoading] = useState(false);
   const [itineraryLoading, setItineraryLoading] = useState(false);
+  const editFormRef = useRef(editForm);
+  editFormRef.current = editForm;
   const [tripSelectionType, setTripSelectionType] = useState('DESTINATION');
   const explicitSubmitRef = useRef(false);
   const hasEditChanges = useMemo(() => (
@@ -206,22 +238,45 @@ const QuotationDetails = () => {
     if (isEditOpen && editForm?.package_id) loadVariants(editForm.package_id);
   }, [isEditOpen, editForm?.package_id, loadVariants]);
 
-  const loadVariantItinerary = useCallback(async (variantId) => {
-    if (!variantId) return;
+  const loadVariantItinerary = useCallback(async (variantId, packageId = editFormRef.current?.package_id, preferredDate = '') => {
+    if (!packageId || !variantId) {
+      setEditForm((current) => ({ ...current, itinerary: [], travel_date: '', return_date: '' }));
+      return;
+    }
     setItineraryLoading(true);
     try {
-      const response = await apiCall(`/api/v1/admin/tour-details/${encodeURIComponent(variantId)}`, 'GET');
+      const response = await apiCall(`/api/v1/admin/tour-packages/${encodeURIComponent(packageId)}/variants/${encodeURIComponent(variantId)}`, 'GET');
       const payload = await response.json().catch(() => ({}));
-      const itinerary = Array.isArray(payload?.data?.itinerary) ? payload.data.itinerary : [];
-      if (itinerary.length) {
-        setEditForm((current) => ({ ...current, itinerary: itinerary.map((day, index) => ({ ...day, day_number: Number(day.day_number ?? day.day) || index + 1, date: day.date ? day.date.slice(0, 10) : '', sort_order: Number(day.sort_order) || index })) }));
-      }
-    } catch { /* A quotation can have a manually entered itinerary. */ } finally { setItineraryLoading(false); }
+      if (!response.ok || payload?.success === false) throw new Error(payload?.message || payload?.detail || 'Unable to load selected variant details.');
+      const detail = getVariantDetail(payload);
+      const departure = getPreferredDeparture(detail, preferredDate || editFormRef.current?.travel_date || '');
+      const travelDate = departure?.departure_date || departure?.date || departure?.start_date || departure?.travel_date || detail.valid_from;
+      const returnDate = departure?.return_date || departure?.end_date || departure?.to_date || detail.valid_to;
+      const itinerary = Array.isArray(detail.itinerary) ? detail.itinerary : [];
+      const inclusion = getVariantQuotationText(detail, 'inclusion');
+      const exclusion = getVariantQuotationText(detail, 'exclusion');
+      setEditForm((current) => ({
+        ...current,
+        travel_date: travelDate ? toLocalDateTime(travelDate) : '',
+        return_date: returnDate ? toLocalDateTime(returnDate) : '',
+        ...(inclusion !== undefined ? { inclusion } : {}),
+        ...(exclusion !== undefined ? { exclusion } : {}),
+        itinerary: itinerary.map((day, index) => ({ ...day, day_number: Number(day.day_number ?? day.day) || index + 1, date: day.date ? day.date.slice(0, 10) : '', sort_order: Number(day.sort_order) || index })),
+      }));
+    } catch (error) { handleApiError(error, 'Unable to load the selected package variant details'); } finally { setItineraryLoading(false); }
   }, []);
 
   useEffect(() => {
-    if (isEditOpen && editForm?.variant_id && !(editForm.itinerary || []).length) loadVariantItinerary(editForm.variant_id);
-  }, [isEditOpen, editForm?.variant_id, editForm?.itinerary, loadVariantItinerary]);
+    if (isEditOpen && editForm?.package_id && editForm?.variant_id && !(editForm.itinerary || []).length) {
+      loadVariantItinerary(editForm.variant_id, editForm.package_id);
+    }
+  }, [isEditOpen, editForm?.package_id, editForm?.variant_id, editForm?.itinerary, loadVariantItinerary]);
+
+  useEffect(() => {
+    if (isEditOpen && tripSelectionType === 'PACKAGE' && !editForm?.variant_id && (editForm?.travel_date || editForm?.return_date)) {
+      setEditForm((current) => ({ ...current, travel_date: '', return_date: '' }));
+    }
+  }, [isEditOpen, tripSelectionType, editForm?.package_id, editForm?.variant_id, editForm?.travel_date, editForm?.return_date]);
 
   const openEdit = () => {
     if (String(quotation.status || '').trim().toUpperCase() !== 'DRAFT') return;
@@ -368,7 +423,10 @@ const QuotationDetails = () => {
 
   const renderReferenceStep = () => <div className="space-y-5"><div className="grid gap-5 md:grid-cols-2"><div><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">Customer</label><input value={editForm.customer?.name || editForm.customer_name || 'Unknown customer'} readOnly className={`${inputClass} cursor-not-allowed bg-slate-100 dark:bg-gray-800`} /></div>{renderVersionField('enquiry_id')}{renderVersionField('tour_name')}{renderVersionField('travel_date')}{renderVersionField('return_date')}{renderVersionField('valid_until')}</div><div className="grid gap-3 sm:grid-cols-2"><label className={`cursor-pointer rounded-xl border p-3 text-sm font-semibold ${tripSelectionType === 'DESTINATION' ? 'border-cyan-500 bg-cyan-50 text-cyan-700' : 'border-gray-200 dark:border-gray-700'}`}><input type="radio" name="version-trip-type" checked={tripSelectionType === 'DESTINATION'} onChange={() => { setTripSelectionType('DESTINATION'); setEditForm((current) => ({ ...current, destination_id: current.destination_id, package_id: '', variant_id: '', itinerary: [] })); }} className="mr-2" />By destination</label><label className={`cursor-pointer rounded-xl border p-3 text-sm font-semibold ${tripSelectionType === 'PACKAGE' ? 'border-cyan-500 bg-cyan-50 text-cyan-700' : 'border-gray-200 dark:border-gray-700'}`}><input type="radio" name="version-trip-type" checked={tripSelectionType === 'PACKAGE'} onChange={() => { setTripSelectionType('PACKAGE'); setEditForm((current) => ({ ...current, destination_id: '', variant_id: '', itinerary: [] })); }} className="mr-2" />By package</label></div><div className="grid gap-5 md:grid-cols-2">{tripSelectionType === 'PACKAGE' ? <><div><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Package</label><SelectField options={packageOptions} isLoading={referencesLoading} isSearchable value={packageOptions.find((option) => option.value === editForm.package_id) || null} onChange={(option) => setEditForm((current) => ({ ...current, package_id: option?.value || '', variant_id: '', itinerary: [] }))} isClearable placeholder="Search package" /></div><div><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Variant</label><SelectField options={variantOptions} isLoading={variantsLoading} isDisabled={!editForm.package_id} isSearchable value={variantOptions.find((option) => option.value === editForm.variant_id) || null} onChange={(option) => { updateEdit('variant_id', option?.value || ''); loadVariantItinerary(option?.value || ''); }} isClearable placeholder="Search variant" /></div></> : <div><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Destination</label><SelectField options={destinationOptions} isLoading={referencesLoading} isSearchable value={destinationOptions.find((option) => option.value === editForm.destination_id) || null} onChange={(option) => setEditForm((current) => ({ ...current, destination_id: option?.value || '', package_id: '', variant_id: '', itinerary: [] }))} isClearable placeholder="Search destination" /></div>}</div></div>;
 
-  const renderVersionField = (field) => <div key={field}><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">{prettyLabel(field)}</label>{dateFields.has(field) ? <CustomDatePicker value={editForm[field] ?? ''} onChange={(value) => updateEdit(field, value)} /> : <input type="text" inputMode={numericFields.has(field) ? 'decimal' : undefined} value={editForm[field] ?? ''} onChange={(event) => updateEdit(field, numericFields.has(field) ? numericValue(event.target.value) : event.target.value)} className={inputClass} />}</div>;
+  const renderVersionField = (field) => {
+    const variantDateLocked = tripSelectionType === 'PACKAGE' && Boolean(editForm.variant_id) && ['travel_date', 'return_date'].includes(field);
+    return <div key={field}><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">{prettyLabel(field)}</label>{variantDateLocked ? <input type="text" readOnly value={editForm[field] ? formatDate(editForm[field]) : 'No date configured for this variant'} className={`${inputClass} cursor-not-allowed opacity-70`} /> : dateFields.has(field) ? <CustomDatePicker value={editForm[field] ?? ''} onChange={(value) => updateEdit(field, value)} /> : <input type="text" inputMode={numericFields.has(field) ? 'decimal' : undefined} value={editForm[field] ?? ''} onChange={(event) => updateEdit(field, numericFields.has(field) ? numericValue(event.target.value) : event.target.value)} className={inputClass} />}</div>;
+  };
 
   const renderVersionStep = () => {
     if (versionStep === 0) return renderReferenceStep();

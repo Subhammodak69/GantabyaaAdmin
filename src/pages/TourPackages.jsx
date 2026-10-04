@@ -49,7 +49,7 @@ const TourPackages = () => {
   const loadPackages = useCallback(async (page = currentPage, limit = itemsPerPage, destinationId = selectedDestination) => {
     setLoading(true);
     try {
-      const queryParams = new URLSearchParams({ page, page_size: limit });
+      const queryParams = new URLSearchParams({ page: String(page), page_size: String(limit) });
       if (destinationId) {
         queryParams.set('destination_id', destinationId);
       }
@@ -234,7 +234,7 @@ const TourPackages = () => {
               type="button"
               aria-label="Refresh tour packages"
               title="Refresh tour packages"
-              onClick={loadPackages}
+              onClick={() => loadPackages(currentPage, itemsPerPage, selectedDestination)}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 sm:px-3 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
