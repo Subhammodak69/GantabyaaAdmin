@@ -25,6 +25,33 @@ const defaultForm = { rule_title: '', regulations: 'null', type: 'DOMESTIC', is_
 
 const prettyRegulations = (value) => JSON.stringify(value ?? null, null, 2);
 
+const normalizeJsonStringLineBreaks = (input) => {
+  let output = '';
+  let inString = false;
+  let escaped = false;
+
+  for (const character of input) {
+    if (inString && (character === '\n' || character === '\r' || character === '\t')) {
+      output += ' ';
+      escaped = false;
+      continue;
+    }
+
+    output += character;
+    if (!inString) {
+      if (character === '"') inString = true;
+    } else if (escaped) {
+      escaped = false;
+    } else if (character === '\\') {
+      escaped = true;
+    } else if (character === '"') {
+      inString = false;
+    }
+  }
+
+  return output;
+};
+
 const RulesRegulations = () => {
   const [rules, setRules] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -98,9 +125,10 @@ const RulesRegulations = () => {
 
     let regulations;
     try {
-      regulations = JSON.parse(form.regulations.trim() || 'null');
+      const input = form.regulations.trim();
+      regulations = JSON.parse(normalizeJsonStringLineBreaks(input || 'null'));
     } catch {
-      toast.error('Regulations must be valid JSON, or left empty for null');
+      toast.error('Invalid regulations JSON. Use double quotes and commas between array items, or leave empty for null.');
       return;
     }
 
@@ -305,7 +333,7 @@ const RulesRegulations = () => {
           <div>
             <label htmlFor="rule-regulations" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Regulations (JSON)</label>
             <textarea id="rule-regulations" value={form.regulations} onChange={(event) => updateForm('regulations', event.target.value)} className={`${inputClass} font-mono text-xs`} rows={8} spellCheck="false" placeholder={'null\nor {"items": ["Example regulation"]}'} />
-            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">Enter valid JSON (text, object, or array). Leave as <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">null</code> if no details are needed.</p>
+            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">Enter valid JSON (text, object, or array). Newlines inside quoted text are converted to spaces. Leave as <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">null</code> if no details are needed.</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
