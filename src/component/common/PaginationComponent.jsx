@@ -78,12 +78,12 @@ const Pagination = ({
     if (totalItems === 0) return null;
 
     const navBtnClass =
-        'inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-border bg-primary text-secondary-foreground transition hover:border-indigo-500/40 hover:bg-indigo-500/5 hover:text-indigo-600 disabled:pointer-events-none disabled:opacity-35 dark:hover:text-indigo-400';
+        'inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-slate-300 bg-slate-100 text-slate-700 transition hover:border-indigo-500/40 hover:bg-indigo-500/5 hover:text-indigo-600 disabled:pointer-events-none disabled:opacity-35 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:text-indigo-400';
 
     const pageBtnClass = (active) =>
         `inline-flex h-8 min-w-8 items-center justify-center rounded-2xl px-2 text-sm font-semibold transition ${active
             ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/25'
-            : 'text-secondary-foreground hover:bg-secondary hover:text-indigo-600 dark:hover:text-indigo-400'
+            : 'text-slate-700 hover:bg-slate-200 hover:text-indigo-600 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-indigo-400'
         }`;
 
     return (
@@ -93,13 +93,13 @@ const Pagination = ({
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 {/* Info */}
                 {showInfo && (
-                    <p className="text-center text-xs text-secondary-foreground sm:text-left sm:text-sm">
+                    <p className="text-center text-xs text-slate-700 dark:text-slate-200 sm:text-left sm:text-sm">
                         Showing{' '}
-                        <span className="font-semibold text-primary-foreground">
+                        <span className="font-semibold text-slate-900 dark:text-slate-100">
                             {startItem}–{endItem}
                         </span>{' '}
                         of{' '}
-                        <span className="font-semibold text-primary-foreground">{totalItems}</span>
+                        <span className="font-semibold text-slate-900 dark:text-slate-100">{totalItems}</span>
                     </p>
                 )}
 
@@ -131,7 +131,7 @@ const Pagination = ({
                             page === '...' ? (
                                 <span
                                     key={`dots-${idx}`}
-                                    className="inline-flex h-8 w-6 items-center justify-center text-xs text-secondary-foreground"
+                                    className="inline-flex h-8 w-6 items-center justify-center text-xs text-slate-600 dark:text-slate-300"
                                 >
                                     …
                                 </span>
@@ -176,7 +176,7 @@ const Pagination = ({
                 <div className="flex flex-wrap items-center justify-center gap-3 sm:justify-end">
                     {handleLimitChange && (
                         <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-secondary-foreground sm:text-sm">
+                            <span className="text-xs font-medium text-slate-700 dark:text-slate-200 sm:text-sm">
                                 Rows
                             </span>
                             <SelectField
@@ -191,7 +191,7 @@ const Pagination = ({
                     )}
 
                     <form onSubmit={handleJump} className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-secondary-foreground sm:text-sm">
+                        <span className="text-xs font-medium text-slate-700 dark:text-slate-200 sm:text-sm">
                             Page
                         </span>
                         <input
@@ -202,11 +202,11 @@ const Pagination = ({
                                 const val = e.target.value.replace(/[^0-9]/g, '');
                                 setJumpPage(val);
                             }}
-                            className="h-10 w-14 rounded-2xl border border-border bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600/50 text-center text-sm font-semibold text-primary-foreground outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15"
+                            className="h-10 w-14 rounded-2xl border border-slate-200 bg-white text-center text-sm font-semibold text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                             aria-label="Go to page"
                         />
-                        <span className="text-xs text-secondary-foreground sm:text-sm">
-                            of <span className="font-semibold text-primary-foreground">{totalPages}</span>
+                        <span className="text-xs text-slate-600 dark:text-slate-300 sm:text-sm">
+                            of <span className="font-semibold text-slate-900 dark:text-slate-100">{totalPages}</span>
                         </span>
                     </form>
                 </div>
