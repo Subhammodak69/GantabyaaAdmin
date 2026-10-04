@@ -204,6 +204,17 @@ const BookingManagementWizard = () => {
 
   const optionFor = (field) => (references[field] || []).map((record) => ({ value: record.id, label: recordLabel(record, field), raw: record }));
 
+  const normalizeDateValue = (value) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value.slice(0, 10);
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+    if (typeof value === 'object') {
+      const candidate = value.date || value.departure_date || value.return_date || value.start_date || value.end_date || value.travel_date;
+      return candidate ? normalizeDateValue(candidate) : '';
+    }
+    return String(value).slice(0, 10);
+  };
+
   const chooseReference = async (field, option) => {
     updateForm(field, option?.value || '');
     if (field === 'customer_id') {
@@ -240,9 +251,9 @@ const BookingManagementWizard = () => {
         destination_id: hasPackage ? '' : enquiry.destination_id || '',
         package_id: enquiry.package_id || '',
         variant_id: hasPackage ? enquiry.variant_id || '' : '',
-        departure_id: '',
-        departure_date: enquiry.travel_date ? String(enquiry.travel_date).slice(0, 10) : '',
-        return_date: '',
+        departure_id: enquiry.departure_id || enquiry.departure?.id || '',
+        departure_date: normalizeDateValue(enquiry.departure_date || enquiry.travel_date || enquiry.departure?.departure_date || ''),
+        return_date: normalizeDateValue(enquiry.return_date || enquiry.departure?.return_date || ''),
         adult_count: String(enquiry.adult_count ?? 1),
         child_count: String(enquiry.child_count ?? 0),
         senior_count: String(enquiry.senior_count ?? 0),
@@ -263,8 +274,38 @@ const BookingManagementWizard = () => {
         try {
           const response = await apiCall(`/api/v1/admin/tour-packages/${encodeURIComponent(enquiry.package_id)}/variants?page=1&page_size=100`, 'GET');
           const payload = await response.json().catch(() => ({}));
-          setReferences((current) => ({ ...current, variant_id: response.ok && Array.isArray(payload?.data) ? payload.data : [], departure_id: [] }));
-        } catch { setReferences((current) => ({ ...current, variant_id: [], departure_id: [] })); }
+          if (!response.ok) throw new Error(payload?.message || payload?.detail || 'Unable to load variants for enquiry package');
+          setReferences((current) => ({ ...current, variant_id: Array.isArray(payload?.data) ? payload.data : [], departure_id: [] }));
+
+          if (enquiry.variant_id) {
+            let detailResponse = await apiCall(`/api/v1/admin/tour-packages/${encodeURIComponent(enquiry.package_id)}/variants/${encodeURIComponent(enquiry.variant_id)}`, 'GET');
+            if (detailResponse.status === 404) {
+              detailResponse = await apiCall(`/api/v1/admin/tour-details/${encodeURIComponent(enquiry.variant_id)}`, 'GET');
+            }
+            const detailPayload = await detailResponse.json().catch(() => ({}));
+            if (!detailResponse.ok) throw new Error(detailPayload?.message || detailPayload?.detail || 'Unable to load departure dates for enquiry variant');
+
+            const departureDates = Array.isArray(detailPayload?.data?.departure_dates) ? detailPayload.data.departure_dates : [];
+            setReferences((current) => ({ ...current, departure_id: departureDates }));
+
+            const enquiryDepartureDate = normalizeDateValue(enquiry.departure_date || enquiry.travel_date || enquiry.departure?.departure_date || '');
+            const selectedDeparture = departureDates.find((departure) => (
+              (enquiry.departure_id && String(departure.id) === String(enquiry.departure_id))
+              || (enquiryDepartureDate && normalizeDateValue(departure.departure_date || departure.date || departure.start_date || departure.travel_date || '') === enquiryDepartureDate)
+            ));
+            if (selectedDeparture) {
+              setForm((current) => ({
+                ...current,
+                departure_id: selectedDeparture.id || current.departure_id,
+                departure_date: normalizeDateValue(selectedDeparture.departure_date || selectedDeparture.date || selectedDeparture.start_date || selectedDeparture.travel_date || '') || current.departure_date,
+                return_date: normalizeDateValue(selectedDeparture.return_date || selectedDeparture.end_date || selectedDeparture.to_date || '') || current.return_date,
+              }));
+            }
+          }
+        } catch (error) {
+          handleApiError(error, 'Unable to load enquiry package dates');
+          setReferences((current) => ({ ...current, variant_id: [], departure_id: [] }));
+        }
       } else {
         setReferences((current) => ({ ...current, variant_id: [], departure_id: [] }));
         if (enquiry.destination_id) await loadReference('destination_id');
@@ -306,10 +347,14 @@ const BookingManagementWizard = () => {
       updateForm('package_id', '');
       updateForm('variant_id', '');
       updateForm('departure_id', '');
+      updateForm('departure_date', '');
+      updateForm('return_date', '');
     }
     if (field === 'package_id') {
       updateForm('variant_id', '');
       updateForm('departure_id', '');
+      updateForm('departure_date', '');
+      updateForm('return_date', '');
       if (!option?.value) { setReferences((current) => ({ ...current, variant_id: [], departure_id: [] })); return; }
       try {
         const response = await apiCall(`/api/v1/admin/tour-packages/${encodeURIComponent(option.value)}/variants?page=1&page_size=100`, 'GET');
@@ -319,14 +364,46 @@ const BookingManagementWizard = () => {
     }
     if (field === 'variant_id') {
       updateForm('departure_id', '');
+      updateForm('departure_date', '');
+      updateForm('return_date', '');
       if (!option?.value || !form.package_id) { setReferences((current) => ({ ...current, departure_id: [] })); return; }
       try {
         let response = await apiCall(`/api/v1/admin/tour-packages/${encodeURIComponent(form.package_id)}/variants/${encodeURIComponent(option.value)}`, 'GET');
         if (response.status === 404) response = await apiCall(`/api/v1/admin/tour-details/${encodeURIComponent(option.value)}`, 'GET');
         const payload = await response.json().catch(() => ({}));
         const details = payload?.data || option.raw || {};
-        setReferences((current) => ({ ...current, departure_id: Array.isArray(details.departure_dates) ? details.departure_dates : [] }));
+        const departureOptions = Array.isArray(details.departure_dates) ? details.departure_dates : [];
+        setReferences((current) => ({ ...current, departure_id: departureOptions }));
+        if (departureOptions.length > 0) {
+          const firstDeparture = departureOptions[0] || {};
+          const defaultDepartureDate = normalizeDateValue(firstDeparture.departure_date || firstDeparture.date || firstDeparture.start_date || firstDeparture.travel_date || '');
+          const defaultReturnDate = normalizeDateValue(firstDeparture.return_date || firstDeparture.end_date || firstDeparture.to_date || '');
+          setForm((current) => ({
+            ...current,
+            departure_date: defaultDepartureDate || current.departure_date,
+            return_date: defaultReturnDate || current.return_date,
+          }));
+        }
       } catch { setReferences((current) => ({ ...current, departure_id: [] })); }
+    }
+    if (field === 'departure_id') {
+      if (!option?.value) {
+        updateForm('departure_id', '');
+        updateForm('departure_date', '');
+        updateForm('return_date', '');
+        return;
+      }
+
+      const departure = option.raw || {};
+      const departureDate = normalizeDateValue(departure.departure_date || departure.date || departure.start_date || departure.travel_date || '');
+      const returnDate = normalizeDateValue(departure.return_date || departure.end_date || departure.to_date || '');
+
+      setForm((current) => ({
+        ...current,
+        departure_id: option.value,
+        departure_date: departureDate || current.departure_date,
+        return_date: returnDate || current.return_date,
+      }));
     }
   };
 
@@ -928,26 +1005,33 @@ const BookingManagementWizard = () => {
                 <p className="text-sm text-gray-500">Provide the departure date, return date, and number of travellers.</p>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium">Departure Date</label>
-                  <CustomDatePicker
-                    value={form.departure_date}
-                    includeTime={false}
-                    onChange={(value) => updateForm('departure_date', value)}
-                    placeholder="Select departure date"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium">Return Date</label>
-                  <CustomDatePicker
-                    value={form.return_date}
-                    includeTime={false}
-                    onChange={(value) => updateForm('return_date', value)}
-                    placeholder="Select return date"
-                  />
-                </div>
-              </div>
+              {(() => {
+                const datesLocked = tripSelection === 'PACKAGE' && Boolean(form.departure_id);
+                return (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium">Departure Date</label>
+                      <CustomDatePicker
+                        value={form.departure_date}
+                        includeTime={false}
+                        onChange={(value) => updateForm('departure_date', value)}
+                        placeholder={datesLocked ? 'Departure locked' : 'Select departure date'}
+                        disabled={datesLocked}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium">Return Date</label>
+                      <CustomDatePicker
+                        value={form.return_date}
+                        includeTime={false}
+                        onChange={(value) => updateForm('return_date', value)}
+                        placeholder={datesLocked ? 'Return locked' : 'Select return date'}
+                        disabled={datesLocked}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="grid gap-4 md:grid-cols-3">
                 {field('Adults (Age 12+)', 'adult_count', 'number')}
@@ -1072,6 +1156,4 @@ const BookingManagementWizard = () => {
 };
 
 export default BookingManagementWizard;
-
-
 

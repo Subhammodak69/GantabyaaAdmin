@@ -31,7 +31,7 @@ const displayValue = (date, includeTime) => date.toLocaleString(undefined, inclu
   ? { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
   : { year: 'numeric', month: 'short', day: 'numeric' });
 
-const CustomDatePicker = ({ value = '', onChange, includeTime = true, placeholder = 'Select date' }) => {
+const CustomDatePicker = ({ value = '', onChange, includeTime = true, placeholder = 'Select date', disabled = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => parseValue(value));
   const [month, setMonth] = useState(() => {
@@ -109,7 +109,12 @@ const CustomDatePicker = ({ value = '', onChange, includeTime = true, placeholde
 
   return (
     <div ref={containerRef} className="relative">
-      <button type="button" onClick={() => setIsOpen((current) => !current)} className={`${inputClass} flex items-center justify-between text-left`}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setIsOpen((current) => !current)}
+        className={`${inputClass} flex items-center justify-between text-left ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
+      >
         <span className={value ? 'text-gray-700 dark:text-gray-200' : 'text-gray-400'}>{value ? displayValue(selectedDate, includeTime) : placeholder}</span>
         <Calendar className="h-4 w-4 shrink-0 text-gray-400" />
       </button>
