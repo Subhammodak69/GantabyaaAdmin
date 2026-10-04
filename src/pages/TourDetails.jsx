@@ -232,6 +232,8 @@ const TourDetails = () => {
   const [mediaModalOpen, setMediaModalOpen] = useState(false);
   const [mediaModalContext, setMediaModalContext] = useState('banner');
   const [mediaForm, setMediaForm] = useState({ type: 'image', url: '', alt: '', cover_image: false });
+  const [highlightModalOpen, setHighlightModalOpen] = useState(false);
+  const [highlightForm, setHighlightForm] = useState({ text: '' });
   const [itineraryModalOpen, setItineraryModalOpen] = useState(false);
   const [itineraryForm, setItineraryForm] = useState({ day: 1, title: '', description: '' });
   const [routeModalOpen, setRouteModalOpen] = useState(false);
@@ -428,6 +430,31 @@ const TourDetails = () => {
       ...current,
       [key]: (current[key] || []).filter((_, idx) => idx !== index),
     }));
+  };
+
+  const openHighlightModal = () => {
+    setHighlightForm({ text: '' });
+    setHighlightModalOpen(true);
+  };
+
+  const submitHighlightModal = () => {
+    const text = highlightForm.text.trim();
+    if (!text) {
+      toast.error('Please enter a highlight.');
+      return;
+    }
+    addArrayItem('highlights', { text });
+    setHighlightModalOpen(false);
+    setHighlightForm({ text: '' });
+  };
+
+  const openItineraryModal = () => {
+    setItineraryForm({
+      day: (draft.itinerary || []).length + 1,
+      title: '',
+      description: '',
+    });
+    setItineraryModalOpen(true);
   };
 
   const setBannerItems = (items) => {
@@ -646,11 +673,13 @@ const TourDetails = () => {
         ...current,
         inclusions: [...(current.inclusions || []), extrasForm.value.trim()],
       }));
+      setExtrasCollapsed((current) => ({ ...current, inclusion: false }));
     } else {
       setDraft((current) => ({
         ...current,
         exclusions: [...(current.exclusions || []), extrasForm.value.trim()],
       }));
+      setExtrasCollapsed((current) => ({ ...current, exclusion: false }));
     }
 
     setExtrasModalOpen(false);
@@ -789,7 +818,7 @@ const TourDetails = () => {
                 </button>
               </div>
             ))}
-            <button type="button" onClick={() => addArrayItem('highlights', { text: '' })} className={addBtnClass}>
+            <button type="button" onClick={openHighlightModal} className={addBtnClass}>
               <Plus className="h-4 w-4" /> Add highlight
             </button>
           </div>
@@ -801,7 +830,7 @@ const TourDetails = () => {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">Itinerary list</p>
-              <button type="button" onClick={() => setItineraryModalOpen(true)} className={addBtnClass}>
+              <button type="button" onClick={openItineraryModal} className={addBtnClass}>
                 <Plus className="h-4 w-4" /> Add itinerary day
               </button>
             </div>
@@ -939,7 +968,9 @@ const TourDetails = () => {
                   >
                     {extrasCollapsed.inclusion ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </button>
-                  <p className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">Inclusions</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">
+                    Inclusions <span className="ml-1 text-gray-400">({(draft.inclusions || []).length})</span>
+                  </p>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -990,7 +1021,9 @@ const TourDetails = () => {
                   >
                     {extrasCollapsed.exclusion ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </button>
-                  <p className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">Exclusions</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">
+                    Exclusions <span className="ml-1 text-gray-400">({(draft.exclusions || []).length})</span>
+                  </p>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -1124,6 +1157,35 @@ const TourDetails = () => {
           {(editingItem?.section === 'inclusions' || editingItem?.section === 'exclusions') && (
             <input value={editItemForm.value || ''} onChange={(event) => setEditItemForm((current) => ({ ...current, value: event.target.value }))} placeholder="Item text" className={inputClass} />
           )}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={highlightModalOpen}
+        onClose={() => setHighlightModalOpen(false)}
+        title="Add highlight"
+        icon={Sparkles}
+        size="md"
+        confirmText="Add highlight"
+        onConfirm={submitHighlightModal}
+      >
+        <div className="space-y-2 p-4">
+          <label htmlFor="new-highlight-text" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Highlight text
+          </label>
+          <textarea
+            id="new-highlight-text"
+            autoFocus
+            value={highlightForm.text}
+            onChange={(event) => setHighlightForm({ text: event.target.value })}
+            onKeyDown={(event) => {
+              if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') submitHighlightModal();
+            }}
+            rows={3}
+            maxLength={500}
+            placeholder="Enter a tour highlight"
+            className={inputClass}
+          />
         </div>
       </Modal>
 

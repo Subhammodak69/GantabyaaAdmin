@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 import { apiCall } from '../utils/apiCall';
 
 const getDocumentUrl = (document) => `/api/v1/admin/documents/${document.id}/download`;
@@ -13,15 +14,24 @@ export const fetchPrivateDocumentBlob = async (document) => {
 };
 
 export const downloadPrivateDocument = async (document) => {
-  const blob = await fetchPrivateDocumentBlob(document);
-  const objectUrl = URL.createObjectURL(blob);
-  const link = window.document.createElement('a');
-  link.href = objectUrl;
-  link.download = document.file_name || 'document';
-  window.document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  const toastId = toast.loading('Downloading document...');
+  let objectUrl = '';
+  try {
+    const blob = await fetchPrivateDocumentBlob(document);
+    objectUrl = URL.createObjectURL(blob);
+    const link = window.document.createElement('a');
+    link.href = objectUrl;
+    link.download = document.file_name || 'document';
+    window.document.body.appendChild(link);
+    link.click();
+    link.remove();
+    toast.success('Document downloaded successfully', { id: toastId });
+  } catch (error) {
+    toast.dismiss(toastId);
+    throw error;
+  } finally {
+    if (objectUrl) window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  }
 };
 
 const usePrivateDocumentFile = (document) => {
