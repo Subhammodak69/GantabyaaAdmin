@@ -733,7 +733,6 @@ const DocumentManagement = () => {
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Uploaded by</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Type</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Uploaded</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Size</th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-700 dark:text-gray-200">Actions</th>
                 </tr>
               </thead>
@@ -742,8 +741,8 @@ const DocumentManagement = () => {
                 {documents.map((doc) => (
                   <tr
                     key={doc.id}
-                    onClick={() => doc.is_active && doc.file_url && setPreviewDoc(doc)}
-                    className={`transition-colors ${doc.is_active && doc.file_url ? 'cursor-pointer hover:bg-emerald-50/60 dark:hover:bg-emerald-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}
+                    onClick={() => doc.is_active && setPreviewDoc(doc)}
+                    className={`transition-colors ${doc.is_active ? 'cursor-pointer hover:bg-emerald-50/60 dark:hover:bg-emerald-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}
                   >
                     <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
                       <input
@@ -762,7 +761,9 @@ const DocumentManagement = () => {
                         </div>
                         <div>
                           <div className="font-semibold text-gray-900 dark:text-white">{doc.title || doc.file_name || 'Untitled document'}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">{doc.file_name || 'N/A'}</div>
+                          {doc.description && (
+                            <div className="max-w-xs truncate text-xs text-gray-500 dark:text-gray-400">{doc.description}</div>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -792,8 +793,6 @@ const DocumentManagement = () => {
                     </td>
 
                     <td className="px-4 py-4 text-xs text-gray-500 dark:text-gray-400">{formatDate(doc.uploaded_at)}</td>
-                    <td className="px-4 py-4 text-xs text-gray-500 dark:text-gray-400">{doc.file_size ? `${Math.round(doc.file_size / 1024)} KB` : 'N/A'}</td>
-
                     <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end">
                         <ActionMenu
@@ -802,8 +801,8 @@ const DocumentManagement = () => {
                             {
                               label: 'Preview Document',
                               icon: <Eye className="h-4 w-4 text-emerald-500" />,
-                              onClick: () => doc.is_active && doc.file_url && setPreviewDoc(doc),
-                              disabled: !doc.is_active || !doc.file_url,
+                              onClick: () => doc.is_active && setPreviewDoc(doc),
+                              disabled: !doc.is_active,
                             },
                             {
                               label: 'Download Document',

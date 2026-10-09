@@ -843,9 +843,9 @@ const BookingManagementWizard = () => {
                         )}
                       </td>
                       <td className="px-4 py-4">
-                        <div>{booking.departure_date ? new Date(booking.departure_date).toLocaleDateString() : 'Not set'}</div>
+                        <div className="text-gray-700 dark:text-gray-300">{booking.departure_date ? new Date(booking.departure_date).toLocaleDateString() : 'Not set'}</div>
                         {booking.return_date && (
-                          <div className="text-xs text-gray-400">Return: {new Date(booking.return_date).toLocaleDateString()}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Return: {new Date(booking.return_date).toLocaleDateString()}</div>
                         )}
                       </td>
                       <td className="px-4 py-4">
