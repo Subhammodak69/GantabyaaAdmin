@@ -12,19 +12,23 @@ import ActionMenu from '../component/common/ActionMenu';
 import { apiCall, handleApiError } from '../utils/apiCall';
 import usePrivateDocumentFile, { downloadPrivateDocument } from '../hooks/usePrivateDocumentFile';
 
-const documentTypes = ['ID_PROOF', 'ADDRESS_PROOF', 'TOUR_DOCUMENT', 'OTHER'];
-const documentTypeOptions = documentTypes.map((type) => ({ value: type, label: type }));
+const documentTypes = {
+  identity: ['ID_PROOF', 'ADDRESS_PROOF'],
+  booking: ['TOUR_DOCUMENT', 'FLIGHT_TICKET', 'TRAIN_TICKET', 'HOTEL_VOUCHER', 'OTHER'],
+};
 const defaultFilters = {
   from_date: '',
   to_date: '',
   document_type: '',
   status: 'active',
   customer_id: '',
+  booking_id: '',
   uploaded_by: '',
 };
 
 const defaultForm = {
   customer_id: '',
+  booking_id: '',
   file: '',
   file_name: '',
   document_type: 'ID_PROOF',
@@ -40,6 +44,7 @@ const defaultEditForm = {
 };
 
 const CUSTOMER_PAGE_SIZE = 20;
+const BOOKING_DOCUMENT_TYPES = documentTypes.booking;
 
 const formatDate = (value) => {
   if (!value) return 'N/A';
@@ -66,9 +71,9 @@ const buildCustomerLabel = (customer) => {
 };
 
 const DocumentPreviewContent = ({ doc }) => {
-  const { fileUrl, loading, error } = usePrivateDocumentFile(doc);
+  const { fileUrl, mimeType, loading, error } = usePrivateDocumentFile(doc);
   if (!doc) return null;
-  const fileType = getFileType(doc.file_url || '', doc.file_name || '');
+  const fileType = mimeType.includes('pdf') ? 'pdf' : mimeType.startsWith('video/') ? 'video' : getFileType(doc.file_url || '', doc.file_name || '');
   return (
     <div
       style={{ background: '#000' }}
@@ -117,6 +122,7 @@ const DocumentPreviewContent = ({ doc }) => {
 };
 
 const DocumentManagement = () => {
+  const [documentScope, setDocumentScope] = useState('identity');
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -148,6 +154,9 @@ const DocumentManagement = () => {
   const [customerHasMore, setCustomerHasMore] = useState(true);
   const [customerLoading, setCustomerLoading] = useState(false);
   const [customerLoaded, setCustomerLoaded] = useState(false);
+  const [bookingOptions, setBookingOptions] = useState([]);
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookingLoaded, setBookingLoaded] = useState(false);
 
   // ---- Fetch (server-side pagination) ----
   const loadDocuments = async (page = currentPage, limit = itemsPerPage, activeFilters = filters) => {
@@ -157,7 +166,7 @@ const DocumentManagement = () => {
       Object.entries(activeFilters).forEach(([key, value]) => {
         if (value) params.set(key, value);
       });
-      const response = await apiCall(`/api/v1/admin/documents?${params.toString()}`, 'GET');
+      const response = await apiCall(`/api/v1/admin/documents/${documentScope}?${params.toString()}`, 'GET');
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(payload?.message || payload?.detail || 'Unable to fetch documents');
@@ -170,7 +179,7 @@ const DocumentManagement = () => {
       // If we just deleted the last item(s) on a page, step back to the last valid page.
       if (data.length === 0 && page > 1 && page > serverTotalPages) {
         setLoading(false);
-        await loadDocuments(serverTotalPages, limit);
+        await loadDocuments(serverTotalPages, limit, activeFilters);
         return;
       }
 
@@ -189,7 +198,7 @@ const DocumentManagement = () => {
   useEffect(() => {
     loadDocuments(1, itemsPerPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [documentScope]);
 
   const handlePageChange = (page) => {
     loadDocuments(page, itemsPerPage);
@@ -216,6 +225,44 @@ const DocumentManagement = () => {
     setFilters(defaultFilters);
     setSelectedFilterCustomer(null);
     loadDocuments(1, itemsPerPage, defaultFilters);
+  };
+
+  const loadBookings = async () => {
+    if (bookingLoaded || bookingLoading) return;
+    setBookingLoading(true);
+    try {
+      const response = await apiCall('/api/v1/admin/bookings?page=1&page_size=100', 'GET');
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.detail || 'Unable to fetch bookings');
+      }
+      const options = (Array.isArray(payload?.data) ? payload.data : []).map((booking) => ({
+        id: booking.id,
+        customer_id: booking.customer?.id,
+        label: [booking.booking_code, booking.customer?.name].filter(Boolean).join(' • ') || booking.id,
+      }));
+      setBookingOptions(options);
+      setBookingLoaded(true);
+    } catch (error) {
+      handleApiError(error, 'Unable to load bookings');
+    } finally {
+      setBookingLoading(false);
+    }
+  };
+
+  const handleScopeChange = (scope) => {
+    if (scope === documentScope) return;
+    setDocumentScope(scope);
+    setFilters((current) => ({ ...current, document_type: '', booking_id: '' }));
+    setFormState((current) => ({
+      ...current,
+      customer_id: '',
+      booking_id: '',
+      document_type: scope === 'booking' ? BOOKING_DOCUMENT_TYPES[0] : documentTypes.identity[0],
+    }));
+    setSelectedCustomer(null);
+    setSelectedIds(new Set());
+    if (scope === 'booking') loadBookings();
   };
 
   const handleDownload = async (doc) => {
@@ -280,8 +327,8 @@ const DocumentManagement = () => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!formState.customer_id || !formState.title || !formState.file) {
-      toast.error('Customer, title and document file are required');
+    if ((!formState.customer_id && !formState.booking_id) || (documentScope === 'booking' && !formState.booking_id) || !formState.title || !formState.file) {
+      toast.error(`${documentScope === 'booking' ? 'Booking' : 'Customer'}, title and document file are required`);
       return;
     }
 
@@ -289,7 +336,8 @@ const DocumentManagement = () => {
 
     try {
       const response = await apiCall('/api/v1/admin/documents', 'POST', {
-        customer_id: formState.customer_id,
+        customer_id: formState.customer_id || null,
+        booking_id: formState.booking_id || null,
         file: formState.file,
         file_name: formState.file_name || 'document',
         document_type: formState.document_type,
@@ -302,7 +350,7 @@ const DocumentManagement = () => {
       }
 
       toast.success('Document uploaded successfully');
-      setFormState(defaultForm);
+      setFormState({ ...defaultForm, document_type: documentTypes[documentScope][0] });
       resetCustomerSelect();
       setIsModalOpen(false);
       await loadDocuments(1, itemsPerPage);
@@ -315,7 +363,7 @@ const DocumentManagement = () => {
 
   const closeUploadModal = () => {
     setIsModalOpen(false);
-    setFormState(defaultForm);
+    setFormState({ ...defaultForm, document_type: documentTypes[documentScope][0] });
     resetCustomerSelect();
   };
 
@@ -477,13 +525,35 @@ const DocumentManagement = () => {
               type="button"
               aria-label="Upload document"
               title="Upload document"
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => {
+                setIsModalOpen(true);
+                if (documentScope === 'booking') loadBookings();
+              }}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-white p-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 sm:px-4"
             >
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Upload document</span>
             </button>
           </div>
+        </div>
+        <div className="mt-4 flex gap-2 border-b border-gray-200 dark:border-gray-700">
+          {[
+            { key: 'identity', label: 'Identity documents' },
+            { key: 'booking', label: 'Booking documents' },
+          ].map((scope) => (
+            <button
+              key={scope.key}
+              type="button"
+              onClick={() => handleScopeChange(scope.key)}
+              className={`border-b-2 px-3 py-2 text-sm font-semibold transition ${
+                documentScope === scope.key
+                  ? 'border-emerald-600 text-emerald-700 dark:text-emerald-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              {scope.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -515,7 +585,7 @@ const DocumentManagement = () => {
               className="mt-1 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
             >
               <option value="">All types</option>
-              {documentTypes.map((type) => <option key={type} value={type}>{type.replace(/_/g, ' ')}</option>)}
+              {documentTypes[documentScope].map((type) => <option key={type} value={type}>{type.replace(/_/g, ' ')}</option>)}
             </select>
           </label>
           <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
@@ -550,6 +620,20 @@ const DocumentManagement = () => {
               classNamePrefix="react-select"
             />
           </div>
+          {documentScope === 'booking' && (
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+              Booking
+              <select
+                value={filters.booking_id}
+                onFocus={loadBookings}
+                onChange={(event) => setFilters((current) => ({ ...current, booking_id: event.target.value }))}
+                className="mt-1 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+              >
+                <option value="">{bookingLoading ? 'Loading bookings...' : 'All bookings'}</option>
+                {bookingOptions.map((booking) => <option key={booking.id} value={booking.id}>{booking.label}</option>)}
+              </select>
+            </label>
+          )}
           <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
             Uploaded by
             <select
@@ -604,6 +688,7 @@ const DocumentManagement = () => {
                     />
                   </th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Document</th>
+                  {documentScope === 'booking' && <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Booking</th>}
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Customer</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Uploaded by</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Type</th>
@@ -641,6 +726,13 @@ const DocumentManagement = () => {
                         </div>
                       </div>
                     </td>
+
+                    {documentScope === 'booking' && (
+                      <td className="px-4 py-4 text-sm text-gray-700 dark:text-gray-300">
+                        <div className="font-medium">{doc.booking_code || 'Booking'}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">{doc.booking_id || 'N/A'}</div>
+                      </td>
+                    )}
 
                     <td className="px-4 py-4 text-sm text-gray-700 dark:text-gray-300">
                       <div className="font-medium">{doc.customer_name || doc.customer_id || 'N/A'}</div>
@@ -741,7 +833,7 @@ const DocumentManagement = () => {
       >
         <form id="document-form" onSubmit={handleSubmit} className="space-y-5 p-1">
           <div className="grid gap-5 md:grid-cols-2">
-            <div>
+            {documentScope === 'identity' ? <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Customer</label>
               <SelectField
                 options={customerOptions}
@@ -760,13 +852,30 @@ const DocumentManagement = () => {
                 menuPlacement="auto"
                 classNamePrefix="react-select"
               />
-            </div>
+            </div> : (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Booking</label>
+                <select
+                  value={formState.booking_id}
+                  onFocus={loadBookings}
+                  onChange={(event) => {
+                    const booking = bookingOptions.find((option) => option.id === event.target.value);
+                    setFormState((current) => ({ ...current, booking_id: event.target.value, customer_id: booking?.customer_id || '' }));
+                  }}
+                  required
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                >
+                  <option value="">{bookingLoading ? 'Loading bookings...' : 'Select booking'}</option>
+                  {bookingOptions.map((booking) => <option key={booking.id} value={booking.id}>{booking.label}</option>)}
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Document type</label>
               <SelectField
-                options={documentTypeOptions}
-                value={documentTypeOptions.find((option) => option.value === formState.document_type) || null}
+                options={documentTypes[documentScope].map((type) => ({ value: type, label: type.replace(/_/g, ' ') }))}
+                value={documentTypes[documentScope].map((type) => ({ value: type, label: type.replace(/_/g, ' ') })).find((option) => option.value === formState.document_type) || null}
                 onChange={(selected) => handleFieldChange('document_type', selected?.value || '')}
                 isSearchable={false}
                 placeholder="Select document type"
@@ -836,8 +945,8 @@ const DocumentManagement = () => {
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Document type</label>
               <SelectField
-                options={documentTypeOptions}
-                value={documentTypeOptions.find((option) => option.value === editForm.document_type) || null}
+                options={documentTypes[documentScope].map((type) => ({ value: type, label: type.replace(/_/g, ' ') }))}
+                value={documentTypes[documentScope].map((type) => ({ value: type, label: type.replace(/_/g, ' ') })).find((option) => option.value === editForm.document_type) || null}
                 onChange={(selected) => handleEditFieldChange('document_type', selected?.value || '')}
                 isSearchable={false}
                 placeholder="Select document type"

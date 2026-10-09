@@ -21,7 +21,7 @@ export const downloadPrivateDocument = async (document) => {
     objectUrl = URL.createObjectURL(blob);
     const link = window.document.createElement('a');
     link.href = objectUrl;
-    link.download = document.file_name || 'document';
+    link.download = document.file_name || document.title || 'document';
     window.document.body.appendChild(link);
     link.click();
     link.remove();
@@ -36,12 +36,14 @@ export const downloadPrivateDocument = async (document) => {
 
 const usePrivateDocumentFile = (document) => {
   const [fileUrl, setFileUrl] = useState('');
+  const [mimeType, setMimeType] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (!document?.id) {
       setFileUrl('');
+      setMimeType('');
       setLoading(false);
       setError('');
       return undefined;
@@ -50,6 +52,7 @@ const usePrivateDocumentFile = (document) => {
     let isCurrent = true;
     let objectUrl = '';
     setFileUrl('');
+    setMimeType('');
     setLoading(true);
     setError('');
 
@@ -58,6 +61,7 @@ const usePrivateDocumentFile = (document) => {
         if (!isCurrent) return;
         objectUrl = URL.createObjectURL(blob);
         setFileUrl(objectUrl);
+        setMimeType(blob.type || '');
       })
       .catch((fetchError) => {
         if (isCurrent) setError(fetchError.message || 'Unable to load document');
@@ -72,7 +76,7 @@ const usePrivateDocumentFile = (document) => {
     };
   }, [document]);
 
-  return { fileUrl, loading, error };
+  return { fileUrl, mimeType, loading, error };
 };
 
 export default usePrivateDocumentFile;

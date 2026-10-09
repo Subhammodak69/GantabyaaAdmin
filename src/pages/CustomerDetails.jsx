@@ -175,8 +175,8 @@ const getFileType = (url = '', fileName = '') => {
 };
 
 const CustomerDocumentPreviewContent = ({ doc }) => {
-  const fileType = getFileType(doc.file_url || '', doc.file_name || '');
-  const { fileUrl, loading, error } = usePrivateDocumentFile(doc);
+  const { fileUrl, mimeType, loading, error } = usePrivateDocumentFile(doc);
+  const fileType = mimeType.includes('pdf') ? 'pdf' : mimeType.startsWith('video/') ? 'video' : getFileType(doc.file_url || '', doc.file_name || '');
 
   return (
     <div style={{ background: '#000' }} className="flex min-h-full w-full flex-col">
@@ -297,15 +297,12 @@ const CustomerDetails = () => {
     setTabLoading(true);
     setTabError('');
     try {
-      const isDocumentsTab = tabKey === 'documents';
-      const params = new URLSearchParams(
-        isDocumentsTab
-          ? { page: String(page), page_size: String(pageSize), status: 'active', customer_id: customerId }
-          : { tab: tabConfig.tabParam, page: String(page), page_size: String(pageSize) }
-      );
-      const endpoint = isDocumentsTab
-        ? `/api/v1/admin/documents?${params}`
-        : `/api/v1/admin/customers/${customerId}?${params}`;
+      const params = new URLSearchParams({
+        tab: tabConfig.tabParam,
+        page: String(page),
+        page_size: String(pageSize),
+      });
+      const endpoint = `/api/v1/admin/customers/${customerId}?${params}`;
       const response = await apiCall(endpoint, 'GET');
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload?.success === false) {
@@ -793,7 +790,7 @@ const CustomerDetails = () => {
                                 <p className="font-semibold text-gray-900 dark:text-white truncate">
                                   {doc.title || doc.file_name || 'Untitled document'}
                                 </p>
-                                <p className="text-xs text-gray-400 truncate">{doc.file_name || 'N/A'}</p>
+                                <p className="text-xs text-gray-400 truncate">{doc.file_name || doc.description || doc.document_type?.replace(/_/g, ' ') || 'Document'}</p>
                               </div>
                             </div>
                           </td>
@@ -807,7 +804,7 @@ const CustomerDetails = () => {
                           <td className="px-4 py-3.5">
                             <div className="text-xs">
                               <p className="font-medium text-gray-800 dark:text-gray-200">{doc.uploader_name || doc.customer_name || 'Customer'}</p>
-                              <p className="text-gray-400">{doc.type === 'incoming' ? 'Customer' : 'Admin'}</p>
+                              <p className="text-gray-400">{doc.type === 'outgoing' ? 'Customer' : 'Admin'}</p>
                             </div>
                           </td>
 
@@ -1238,6 +1235,40 @@ const CustomerDetails = () => {
                 <p className="rounded-xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-400 dark:border-gray-700">
                   No {TABS.find((tab) => tab.key === activeTab)?.label.toLowerCase()} records found for this customer.
                 </p>
+              ) : activeTab === 'wishlist' ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {tabData.wishlist.map((item, index) => (
+                    <article
+                      key={item.wishlist_id || item.id || item.package_id || index}
+                      className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-gray-700 dark:bg-gray-900"
+                    >
+                      <div className="flex items-start gap-4 bg-gradient-to-br from-rose-50 via-white to-indigo-50 p-4 dark:from-rose-950/20 dark:via-gray-900 dark:to-indigo-950/20">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-rose-500 shadow-sm dark:bg-gray-800">
+                          <Heart className="h-5 w-5 fill-current" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {item.tour_code && <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">{item.tour_code}</span>}
+                            {item.is_featured && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Featured</span>}
+                          </div>
+                          <h3 className="mt-1 text-base font-bold text-gray-900 dark:text-white">{item.title || 'Saved tour'}</h3>
+                          <p className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                            {[item.destination, item.type?.replace(/_/g, ' ')].filter(Boolean).join(' · ') || 'Tour package'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-3 p-4">
+                        <p className="line-clamp-3 text-sm leading-6 text-gray-600 dark:text-gray-300">
+                          {item.description || 'This tour is saved in the customer wishlist.'}
+                        </p>
+                        <div className="flex items-center justify-between gap-3 border-t border-gray-100 pt-3 text-xs dark:border-gray-800">
+                          <span className="text-gray-500 dark:text-gray-400">Added to wishlist</span>
+                          <span className="font-medium text-gray-700 dark:text-gray-200">{formatShortDate(item.wishlisted_at)}</span>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
               ) : activeTab === 'invoices' ? (
                 <div className="space-y-3">
                   {tabData.invoices.map((invoice, index) => {
