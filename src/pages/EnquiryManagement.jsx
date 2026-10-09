@@ -380,6 +380,31 @@ const EnquiryManagement = () => {
     loadEnquiries(currentPage, itemsPerPage);
   }, [loadEnquiries, currentPage, itemsPerPage]);
 
+  useEffect(() => {
+    const handleRealtimeEvent = (event) => {
+      const { event: eventName, payload } = event.detail || {};
+      if (eventName === 'lead:created') {
+        loadEnquiries(currentPage, itemsPerPage);
+        return;
+      }
+      if (eventName !== 'lead:score_updated' || !payload?.lead_id) return;
+      setEnquiries((current) => current.map((enquiry) => (
+        enquiry.lead?.id === payload.lead_id
+          ? { ...enquiry, lead: { ...enquiry.lead, lead_score: payload.new_score } }
+          : enquiry
+      )));
+      setSelectedEnquiry((current) => current?.lead?.id === payload.lead_id
+        ? { ...current, lead: { ...current.lead, lead_score: payload.new_score } }
+        : current);
+      setLeadDetails((current) => current?.id === payload.lead_id
+        ? { ...current, lead_score: payload.new_score }
+        : current);
+    };
+
+    window.addEventListener('cobtravels:realtime:event', handleRealtimeEvent);
+    return () => window.removeEventListener('cobtravels:realtime:event', handleRealtimeEvent);
+  }, [currentPage, itemsPerPage, loadEnquiries]);
+
   // Open the inspection modal; the action menu still provides the full lead page.
   const openEnquiryDetails = async (enquiry) => {
     setSelectedEnquiry(enquiry);

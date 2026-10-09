@@ -244,6 +244,20 @@ const LeadManagement = () => {
     }
   }, [stateEnquiry, loadEnquiryAndLead]);
 
+  useEffect(() => {
+    const handleRealtimeEvent = (event) => {
+      const { event: eventName, payload } = event.detail || {};
+      if (eventName !== 'lead:score_updated' || payload?.lead_id !== effectiveLeadId) return;
+      setLead((current) => current ? { ...current, lead_score: payload.new_score } : current);
+      setEnquiry((current) => current
+        ? { ...current, lead: { ...(current.lead || {}), lead_score: payload.new_score } }
+        : current);
+    };
+
+    window.addEventListener('cobtravels:realtime:event', handleRealtimeEvent);
+    return () => window.removeEventListener('cobtravels:realtime:event', handleRealtimeEvent);
+  }, [effectiveLeadId]);
+
   // Load Destination / Package Names
   useEffect(() => {
     if (enquiry?.destination_id) {
