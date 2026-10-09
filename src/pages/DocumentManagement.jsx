@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ManagementTable from '../component/common/ManagementTable';
 import toast from 'react-hot-toast';
-import { FileText, Plus, Trash2, RefreshCw, Eye, Pencil, Download } from 'lucide-react';
+import { FileText, Plus, Trash2, RefreshCw, Eye, Pencil, Download, Filter } from 'lucide-react';
 import Modal from '../component/common/Modal';
 import ConfirmDeleteModal from '../component/common/ConfirmDeleteModal';
 import MediaViewerModal from '../component/common/MediaViewerModal';
@@ -45,6 +45,20 @@ const defaultEditForm = {
 
 const CUSTOMER_PAGE_SIZE = 20;
 const BOOKING_DOCUMENT_TYPES = documentTypes.booking;
+const documentTypeFilterOptions = (scope) => [
+  { value: '', label: 'All types' },
+  ...documentTypes[scope].map((type) => ({ value: type, label: type.replace(/_/g, ' ') })),
+];
+const statusFilterOptions = [
+  { value: 'active', label: 'Active' },
+  { value: 'deleted', label: 'Deleted' },
+  { value: 'all', label: 'All' },
+];
+const uploadedByFilterOptions = [
+  { value: '', label: 'Anyone' },
+  { value: 'CUSTOMER', label: 'Customer' },
+  { value: 'ADMIN', label: 'Admin' },
+];
 
 const formatDate = (value) => {
   if (!value) return 'N/A';
@@ -131,6 +145,8 @@ const DocumentManagement = () => {
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [filters, setFilters] = useState(defaultFilters);
+  const [filterDraft, setFilterDraft] = useState(defaultFilters);
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formState, setFormState] = useState(defaultForm);
@@ -149,7 +165,14 @@ const DocumentManagement = () => {
   // ---- Customer select (paginated, lazy-loaded on menu open, more on scroll) ----
   const [customerOptions, setCustomerOptions] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
-  const [selectedFilterCustomer, setSelectedFilterCustomer] = useState(null);
+  const [filterCustomerOptions, setFilterCustomerOptions] = useState([]);
+  const [filterSelectedCustomer, setFilterSelectedCustomer] = useState(null);
+  const [filterCustomerSearch, setFilterCustomerSearch] = useState('');
+  const [filterCustomerLoading, setFilterCustomerLoading] = useState(false);
+  const [filterCustomerPage, setFilterCustomerPage] = useState(1);
+  const [filterCustomerHasMore, setFilterCustomerHasMore] = useState(true);
+  const filterCustomerRequest = useRef(0);
+  const filterCustomerSearchTimeout = useRef(null);
   const [customerPage, setCustomerPage] = useState(1);
   const [customerHasMore, setCustomerHasMore] = useState(true);
   const [customerLoading, setCustomerLoading] = useState(false);
@@ -209,23 +232,94 @@ const DocumentManagement = () => {
     loadDocuments(1, limit);
   };
 
-  const handleApplyFilters = () => {
-    if (Boolean(filters.from_date) !== Boolean(filters.to_date)) {
+  const handleApplyFilters = (nextFilters = filterDraft) => {
+    if (Boolean(nextFilters.from_date) !== Boolean(nextFilters.to_date)) {
       toast.error('Select both dates to filter by upload date');
       return;
     }
-    if (filters.from_date && filters.to_date < filters.from_date) {
+    if (nextFilters.from_date && nextFilters.to_date < nextFilters.from_date) {
       toast.error('End date must be on or after start date');
       return;
     }
-    loadDocuments(1, itemsPerPage, filters);
+    setFilters(nextFilters);
+    loadDocuments(1, itemsPerPage, nextFilters);
+    setIsFilterModalOpen(false);
   };
 
   const handleResetFilters = () => {
     setFilters(defaultFilters);
-    setSelectedFilterCustomer(null);
+    setFilterDraft(defaultFilters);
+    setFilterSelectedCustomer(null);
+    setFilterCustomerSearch('');
     loadDocuments(1, itemsPerPage, defaultFilters);
+    setIsFilterModalOpen(false);
   };
+
+  const handlePrimaryFilterChange = (key, value) => {
+    const nextFilters = { ...filters, [key]: value };
+    setFilters(nextFilters);
+    setFilterDraft(nextFilters);
+    loadDocuments(1, itemsPerPage, nextFilters);
+  };
+
+  const openFilterModal = () => {
+    setFilterDraft(filters);
+    setFilterSelectedCustomer(
+      filterCustomerOptions.find((option) => option.value === filters.customer_id) || filterSelectedCustomer
+    );
+    setIsFilterModalOpen(true);
+  };
+
+  const loadFilterCustomers = async (page = 1, search = filterCustomerSearch, append = false) => {
+    const requestId = filterCustomerRequest.current + 1;
+    filterCustomerRequest.current = requestId;
+    setFilterCustomerLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(page), page_size: String(CUSTOMER_PAGE_SIZE) });
+      if (search) params.set('search', search);
+      const response = await apiCall(`/api/v1/admin/customers?${params.toString()}`, 'GET');
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.detail || 'Unable to fetch customers');
+      }
+      if (requestId !== filterCustomerRequest.current) return;
+
+      const options = (Array.isArray(payload?.data) ? payload.data : []).map((customer) => ({
+        value: customer.id,
+        label: buildCustomerLabel(customer),
+      }));
+      setFilterCustomerOptions((current) => (append ? [...current, ...options] : options));
+      setFilterCustomerPage(Number(payload?.pagination?.current_page) || page);
+      setFilterCustomerHasMore(Boolean(payload?.pagination?.has_next));
+    } catch (error) {
+      if (requestId === filterCustomerRequest.current) {
+        handleApiError(error, 'Unable to search customers');
+      }
+    } finally {
+      if (requestId === filterCustomerRequest.current) setFilterCustomerLoading(false);
+    }
+  };
+
+  const handleFilterCustomerSearch = (value, { action }) => {
+    if (action !== 'input-change') return value;
+    setFilterCustomerSearch(value);
+    if (filterCustomerSearchTimeout.current) clearTimeout(filterCustomerSearchTimeout.current);
+    filterCustomerSearchTimeout.current = setTimeout(() => {
+      loadFilterCustomers(1, value, false);
+    }, 300);
+    return value;
+  };
+
+  const handleFilterCustomerMenuScroll = () => {
+    if (filterCustomerHasMore && !filterCustomerLoading) {
+      loadFilterCustomers(filterCustomerPage + 1, filterCustomerSearch, true);
+    }
+  };
+
+  useEffect(() => () => {
+    if (filterCustomerSearchTimeout.current) clearTimeout(filterCustomerSearchTimeout.current);
+    filterCustomerRequest.current += 1;
+  }, []);
 
   const loadBookings = async () => {
     if (bookingLoaded || bookingLoading) return;
@@ -238,6 +332,7 @@ const DocumentManagement = () => {
       }
       const options = (Array.isArray(payload?.data) ? payload.data : []).map((booking) => ({
         id: booking.id,
+        value: booking.id,
         customer_id: booking.customer?.id,
         label: [booking.booking_code, booking.customer?.name].filter(Boolean).join(' • ') || booking.id,
       }));
@@ -253,7 +348,9 @@ const DocumentManagement = () => {
   const handleScopeChange = (scope) => {
     if (scope === documentScope) return;
     setDocumentScope(scope);
-    setFilters((current) => ({ ...current, document_type: '', booking_id: '' }));
+    const nextFilters = { ...filters, document_type: '', booking_id: '' };
+    setFilters(nextFilters);
+    setFilterDraft(nextFilters);
     setFormState((current) => ({
       ...current,
       customer_id: '',
@@ -558,98 +655,41 @@ const DocumentManagement = () => {
       </div>
 
       <div className="mt-5 px-4">
-        <div className="mb-4 grid gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
-            From date
-            <input
-              type="date"
-              value={filters.from_date}
-              onChange={(event) => setFilters((current) => ({ ...current, from_date: event.target.value }))}
-              className="mt-1 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-            />
-          </label>
-          <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
-            To date
-            <input
-              type="date"
-              value={filters.to_date}
-              onChange={(event) => setFilters((current) => ({ ...current, to_date: event.target.value }))}
-              className="mt-1 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-            />
-          </label>
-          <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
-            Document type
-            <select
-              value={filters.document_type}
-              onChange={(event) => setFilters((current) => ({ ...current, document_type: event.target.value }))}
-              className="mt-1 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-            >
-              <option value="">All types</option>
-              {documentTypes[documentScope].map((type) => <option key={type} value={type}>{type.replace(/_/g, ' ')}</option>)}
-            </select>
-          </label>
-          <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <label className="w-full text-xs font-medium text-gray-600 dark:text-gray-300 sm:w-52">
             Status
-            <select
-              value={filters.status}
-              onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
-              className="mt-1 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-            >
-              <option value="active">Active</option>
-              <option value="deleted">Deleted</option>
-              <option value="all">All</option>
-            </select>
-          </label>
-          <div className="text-xs font-medium text-gray-600 dark:text-gray-300">
-            Customer
             <SelectField
-              options={customerOptions}
-              value={selectedFilterCustomer}
-              onChange={(selected) => {
-                setSelectedFilterCustomer(selected);
-                setFilters((current) => ({ ...current, customer_id: selected?.value || '' }));
-              }}
-              onMenuOpen={handleCustomerMenuOpen}
-              onMenuScrollToBottom={handleCustomerMenuScrollToBottom}
-              isLoading={customerLoading}
-              isSearchable
-              isClearable
-              placeholder="All customers"
-              noOptionsMessage={() => (customerLoading ? 'Loading...' : 'No customers found')}
+              className="mt-1"
+              options={statusFilterOptions}
+              value={statusFilterOptions.find((option) => option.value === filters.status) || statusFilterOptions[0]}
+              onChange={(option) => handlePrimaryFilterChange('status', option?.value || '')}
+              isSearchable={false}
               menuPlacement="auto"
-              classNamePrefix="react-select"
             />
-          </div>
-          {documentScope === 'booking' && (
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
-              Booking
-              <select
-                value={filters.booking_id}
-                onFocus={loadBookings}
-                onChange={(event) => setFilters((current) => ({ ...current, booking_id: event.target.value }))}
-                className="mt-1 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-              >
-                <option value="">{bookingLoading ? 'Loading bookings...' : 'All bookings'}</option>
-                {bookingOptions.map((booking) => <option key={booking.id} value={booking.id}>{booking.label}</option>)}
-              </select>
-            </label>
-          )}
-          <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
-            Uploaded by
-            <select
-              value={filters.uploaded_by}
-              onChange={(event) => setFilters((current) => ({ ...current, uploaded_by: event.target.value }))}
-              className="mt-1 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-            >
-              <option value="">Anyone</option>
-              <option value="CUSTOMER">Customer</option>
-              <option value="ADMIN">Admin</option>
-            </select>
           </label>
-          <div className="flex items-end gap-2">
-            <button type="button" onClick={handleApplyFilters} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">Apply filters</button>
-            <button type="button" onClick={handleResetFilters} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">Reset</button>
-          </div>
+          <label className="w-full text-xs font-medium text-gray-600 dark:text-gray-300 sm:w-60">
+            Document type
+            <SelectField
+              className="mt-1"
+              options={documentTypeFilterOptions(documentScope)}
+              value={documentTypeFilterOptions(documentScope).find((option) => option.value === filters.document_type) || documentTypeFilterOptions(documentScope)[0]}
+              onChange={(option) => handlePrimaryFilterChange('document_type', option?.value || '')}
+              isSearchable={false}
+              menuPlacement="auto"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={openFilterModal}
+            aria-label="More filters"
+            title="More filters"
+            className="relative ml-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          >
+            <Filter className="h-4 w-4" />
+            {(filters.from_date || filters.to_date || filters.customer_id || filters.booking_id || filters.uploaded_by) && (
+              <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-gray-900" />
+            )}
+          </button>
         </div>
         <div className="flex items-center justify-between gap-3">
           {selectedIds.size > 0 ? (
@@ -813,6 +853,104 @@ const DocumentManagement = () => {
         <DocumentPreviewContent doc={previewDoc} />
       </MediaViewerModal>
 
+      <Modal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        title="More filters"
+        icon={Filter}
+        size="lg"
+        footer={(
+          <div className="flex w-full flex-wrap justify-end gap-2">
+            <button type="button" onClick={() => setIsFilterModalOpen(false)} className="rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:border-gray-600 dark:text-gray-200">
+              Cancel
+            </button>
+            <button type="button" onClick={handleResetFilters} className="rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:border-gray-600 dark:text-gray-200">
+              Reset
+            </button>
+            <button type="button" onClick={() => handleApplyFilters(filterDraft)} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">
+              Apply filters
+            </button>
+          </div>
+        )}
+      >
+        <div className="grid gap-4 p-1 sm:grid-cols-2">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            From date
+            <input
+              type="date"
+              value={filterDraft.from_date}
+              onChange={(event) => setFilterDraft((current) => ({ ...current, from_date: event.target.value }))}
+              className="mt-1 block w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            />
+          </label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            To date
+            <input
+              type="date"
+              value={filterDraft.to_date}
+              onChange={(event) => setFilterDraft((current) => ({ ...current, to_date: event.target.value }))}
+              className="mt-1 block w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            />
+          </label>
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Customer
+            <SelectField
+              className="mt-1"
+              options={filterCustomerOptions}
+              value={filterSelectedCustomer}
+              onChange={(selected) => {
+                setFilterSelectedCustomer(selected);
+                setFilterCustomerSearch('');
+                setFilterDraft((current) => ({ ...current, customer_id: selected?.value || '' }));
+              }}
+              onMenuOpen={() => {
+                if (filterCustomerOptions.length === 0) loadFilterCustomers(1, '', false);
+              }}
+              onInputChange={handleFilterCustomerSearch}
+              onMenuScrollToBottom={handleFilterCustomerMenuScroll}
+              isLoading={filterCustomerLoading}
+              isSearchable
+              isClearable
+              placeholder="All customers"
+              noOptionsMessage={() => (filterCustomerLoading ? 'Searching customers...' : 'No customers found')}
+              loadingMessage={() => 'Searching customers...'}
+              menuPlacement="auto"
+              classNamePrefix="react-select"
+            />
+          </div>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Uploaded by
+            <SelectField
+              className="mt-1"
+              options={uploadedByFilterOptions}
+              value={uploadedByFilterOptions.find((option) => option.value === filterDraft.uploaded_by) || uploadedByFilterOptions[0]}
+              onChange={(option) => setFilterDraft((current) => ({ ...current, uploaded_by: option?.value || '' }))}
+              isSearchable={false}
+              menuPlacement="auto"
+            />
+          </label>
+          {documentScope === 'booking' && (
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 sm:col-span-2">
+              Booking
+              <SelectField
+                className="mt-1"
+                options={bookingOptions}
+                value={bookingOptions.find((option) => option.value === filterDraft.booking_id) || null}
+                onChange={(option) => setFilterDraft((current) => ({ ...current, booking_id: option?.value || '' }))}
+                onMenuOpen={loadBookings}
+                isLoading={bookingLoading}
+                isSearchable
+                isClearable
+                placeholder="All bookings"
+                noOptionsMessage={() => (bookingLoading ? 'Loading bookings...' : 'No bookings found')}
+                menuPlacement="auto"
+                classNamePrefix="react-select"
+              />
+            </label>
+          )}
+        </div>
+      </Modal>
+
       {/* Upload modal (POST) */}
       <Modal
         isOpen={isModalOpen}
@@ -855,19 +993,23 @@ const DocumentManagement = () => {
             </div> : (
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Booking</label>
-                <select
-                  value={formState.booking_id}
-                  onFocus={loadBookings}
-                  onChange={(event) => {
-                    const booking = bookingOptions.find((option) => option.id === event.target.value);
-                    setFormState((current) => ({ ...current, booking_id: event.target.value, customer_id: booking?.customer_id || '' }));
+                <SelectField
+                  options={bookingOptions}
+                  value={bookingOptions.find((option) => option.value === formState.booking_id) || null}
+                  onMenuOpen={loadBookings}
+                  onChange={(selected) => {
+                    const booking = bookingOptions.find((option) => option.value === selected?.value);
+                    setFormState((current) => ({ ...current, booking_id: selected?.value || '', customer_id: booking?.customer_id || '' }));
                   }}
                   required
-                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                >
-                  <option value="">{bookingLoading ? 'Loading bookings...' : 'Select booking'}</option>
-                  {bookingOptions.map((booking) => <option key={booking.id} value={booking.id}>{booking.label}</option>)}
-                </select>
+                  isLoading={bookingLoading}
+                  isSearchable
+                  isClearable
+                  placeholder={bookingLoading ? 'Loading bookings...' : 'Select booking'}
+                  noOptionsMessage={() => (bookingLoading ? 'Loading bookings...' : 'No bookings found')}
+                  menuPlacement="auto"
+                  classNamePrefix="react-select"
+                />
               </div>
             )}
 
