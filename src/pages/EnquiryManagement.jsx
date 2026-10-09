@@ -35,31 +35,25 @@ import { sanitizeNumericInput } from '../utils/inputValidation';
 const ENQUIRY_TYPES = [
   { value: 'FIXED_TOUR', label: 'Fixed Tour' },
   { value: 'CUSTOM_TOUR', label: 'Custom Tour' },
-  { value: 'HOTEL_ONLY', label: 'Hotel Only' },
-  { value: 'TRANSPORT_ONLY', label: 'Transport Only' },
-  { value: 'FLIGHT_ONLY', label: 'Flight Only' },
-  { value: 'VISA_ASSISTANCE', label: 'Visa Assistance' },
-  { value: 'CORPORATE', label: 'Corporate' },
 ];
 
 const CHANNELS = [
   { value: 'WEBSITE', label: 'Website' },
   { value: 'WHATSAPP', label: 'WhatsApp' },
+  { value: 'APP', label: 'Mobile app' },
   { value: 'PHONE', label: 'Phone' },
   { value: 'EMAIL', label: 'Email' },
   { value: 'OFFLINE', label: 'Offline / Walk-in' },
-  { value: 'REFERRAL', label: 'Referral' },
-  { value: 'SOCIAL_MEDIA', label: 'Social Media' },
+  { value: 'ADMIN', label: 'Admin' },
 ];
 
 const STATUSES = [
   { value: 'NEW', label: 'New' },
   { value: 'IN_PROGRESS', label: 'In Progress' },
-  { value: 'QUALIFIED', label: 'Qualified' },
-  { value: 'FOLLOW_UP', label: 'Follow Up' },
+  { value: 'QUOTED', label: 'Quoted' },
   { value: 'CONVERTED', label: 'Converted' },
-  { value: 'LOST', label: 'Lost' },
   { value: 'CANCELLED', label: 'Cancelled' },
+  { value: 'CLOSED', label: 'Closed' },
 ];
 
 const MEAL_PLANS = [
@@ -129,10 +123,9 @@ const formatShortDate = (value) => {
 const statusBadgeClasses = {
   NEW: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-300',
   IN_PROGRESS: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300',
-  QUALIFIED: 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/40 dark:bg-indigo-900/20 dark:text-indigo-300',
-  FOLLOW_UP: 'border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900/40 dark:bg-purple-900/20 dark:text-purple-300',
+  QUOTED: 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/40 dark:bg-indigo-900/20 dark:text-indigo-300',
   CONVERTED: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300',
-  LOST: 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300',
+  CLOSED: 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
   CANCELLED: 'border-gray-200 bg-gray-100 text-gray-700 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-300',
 };
 
@@ -387,9 +380,21 @@ const EnquiryManagement = () => {
     loadEnquiries(currentPage, itemsPerPage);
   }, [loadEnquiries, currentPage, itemsPerPage]);
 
-  // Navigate to Lead Management Page
-  const openEnquiryDetails = (enquiry) => {
-    navigate(`/enquiries/${enquiry.id}/lead`, { state: { enquiry } });
+  // Open the inspection modal; the action menu still provides the full lead page.
+  const openEnquiryDetails = async (enquiry) => {
+    setSelectedEnquiry(enquiry);
+    setLeadDetails(enquiry.lead || null);
+    setIsDetailsModalOpen(true);
+    setLeadLoading(true);
+    try {
+      const response = await apiCall(`/api/v1/admin/enquiries/${enquiry.id}/lead`, 'GET');
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok) setLeadDetails(payload?.data || null);
+    } catch {
+      // The enquiry can still be inspected when no lead record is available.
+    } finally {
+      setLeadLoading(false);
+    }
   };
 
   // Open Edit Status Modal
@@ -412,12 +417,14 @@ const EnquiryManagement = () => {
   ];
 
   // Validate step before proceeding
+  const hasContact = Boolean(
+    createForm.name.trim() || createForm.phone.trim() || createForm.email.trim()
+  );
+
   const validateStep = (step) => {
-    if (step === 1) {
-      if (!createForm.name.trim()) {
-        toast.error('Please enter the customer name.');
-        return false;
-      }
+    if (step === 1 && !hasContact) {
+      toast.error('Enter a name, phone number, or email address.');
+      return false;
     }
     return true;
   };
@@ -431,7 +438,7 @@ const EnquiryManagement = () => {
   const goPrevStep = () => setCreateStep((s) => Math.max(s - 1, 1));
 
   const isCreateStepValid = (step) => {
-    if (step === 1) return Boolean(createForm.name.trim());
+    if (step === 1) return hasContact;
     if (step === 2) return Boolean(createForm.enquiry_type && createForm.channel);
     if (step === 3) return tripSelectionType === 'DESTINATION'
       ? Boolean(createForm.destination_id)
@@ -456,7 +463,7 @@ const EnquiryManagement = () => {
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
     if (createStep !== CREATE_STEPS.length || !isCreateStepValid(CREATE_STEPS.length)) return;
-    if (!createForm.name.trim() && !createForm.phone.trim() && !createForm.email.trim()) {
+    if (!hasContact) {
       toast.error('Please provide at least a name, phone, or email.');
       return;
     }
@@ -466,17 +473,17 @@ const EnquiryManagement = () => {
       const payload = {
         enquiry_type: createForm.enquiry_type,
         channel: createForm.channel,
-        name: createForm.name.trim(),
-        phone: createForm.phone.trim(),
-        email: createForm.email.trim(),
-        destination_id: createForm.destination_id || '',
-        package_id: createForm.package_id || '',
-        variant_id: createForm.variant_id || '',
-        hotel_id: createForm.hotel_id || '',
-        vehicle_id: createForm.vehicle_id || '',
-        customer_id: createForm.customer_id || '',
-        visitor_id: createForm.visitor_id || '',
-        travel_date: createForm.travel_date || '',
+        name: createForm.name.trim() || null,
+        phone: createForm.phone.trim() || null,
+        email: createForm.email.trim() || null,
+        destination_id: createForm.destination_id || null,
+        package_id: createForm.package_id || null,
+        variant_id: createForm.variant_id || null,
+        hotel_id: createForm.hotel_id || null,
+        vehicle_id: createForm.vehicle_id || null,
+        customer_id: createForm.customer_id || null,
+        visitor_id: createForm.visitor_id || null,
+        travel_date: createForm.travel_date || null,
         travel_duration_day: Number(createForm.travel_duration_day) || 0,
         travel_duration_night: Number(createForm.travel_duration_night) || 0,
         adult_count: Number(createForm.adult_count) || 0,
@@ -1066,7 +1073,7 @@ const EnquiryManagement = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className={labelClass}>Customer name <span className="text-red-500">*</span></label>
+                  <label className={labelClass}>Customer name <span className="text-gray-400 font-normal">(optional if phone/email is provided)</span></label>
                   <input type="text" value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} placeholder="e.g. John Doe" className={inputClass} />
                 </div>
                 <div>
@@ -1094,7 +1101,14 @@ const EnquiryManagement = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
                   {ENQUIRY_TYPES.map((t) => (
                     <button key={t.value} type="button"
-                      onClick={() => setCreateForm({ ...createForm, enquiry_type: t.value })}
+                      onClick={() => {
+                        setCreateForm((current) => ({
+                          ...current,
+                          enquiry_type: t.value,
+                          ...(t.value === 'CUSTOM_TOUR' ? { package_id: '', variant_id: '' } : {}),
+                        }));
+                        if (t.value === 'CUSTOM_TOUR') setTripSelectionType('DESTINATION');
+                      }}
                       className={`rounded-xl border px-3 py-3 text-xs font-semibold text-left transition ${createForm.enquiry_type === t.value ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300' : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-400'}`}
                     >
                       {createForm.enquiry_type === t.value && <Check className="h-3 w-3 text-indigo-500 mb-1" />}
@@ -1135,7 +1149,7 @@ const EnquiryManagement = () => {
               <div>
                 <label className={labelClass}>Choose selection mode</label>
                 <div className="grid grid-cols-2 gap-3 mt-1">
-                  <label
+                  {createForm.enquiry_type === 'FIXED_TOUR' && <label
                     className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
                       tripSelectionType === 'DESTINATION'
                         ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/20'
@@ -1171,7 +1185,7 @@ const EnquiryManagement = () => {
                         Choose destination & view destination hotels
                       </span>
                     </div>
-                  </label>
+                  </label>}
 
                   <label
                     className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${

@@ -9,6 +9,7 @@ import {
   Check,
   FileText,
   Filter,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -34,7 +35,7 @@ const defaultForm = {
   customer_id: '', enquiry_id: '', package_id: '', variant_id: '', destination_id: '', tour_name: '',
   travel_date: '', return_date: '', subtotal: '0', discount_amount: '0', tax_amount: '0', total_amount: '0',
   valid_until: '', terms_and_conditions: '', important_notes: '', inclusion: '', exclusion: '',
-  items: [emptyLineItem], hotels: [], vehicles: [], itinerary: [],
+  items: [], hotels: [], vehicles: [], itinerary: [],
 };
 
 const formatDate = (value) => {
@@ -48,6 +49,7 @@ const normalizeEnquiryDate = (value) => {
   if (!value) return '';
   return String(value).length === 10 ? `${value}T00:00` : String(value).slice(0, 16);
 };
+const toIso = (value) => value ? new Date(value).toISOString() : null;
 const getVariantDetail = (payload) => {
   const data = payload?.data || {};
   return { ...data, ...(data.variant || {}), ...(data.details || {}), ...(data.tour_detail || {}), ...(data.tour_details || {}) };
@@ -92,9 +94,21 @@ const getPreferredDeparture = (dates, preferredDate = '') => {
 const statusClasses = {
   DRAFT: 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
   SENT: 'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-300',
+  VIEWED: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-300',
   ACCEPTED: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300',
   REJECTED: 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300',
+  EXPIRED: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300',
+  CANCELLED: 'border-gray-200 bg-gray-100 text-gray-700 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-300',
 };
+const quotationStatusOptions = [
+  { value: 'DRAFT', label: 'Draft' },
+  { value: 'SENT', label: 'Sent' },
+  { value: 'VIEWED', label: 'Viewed' },
+  { value: 'ACCEPTED', label: 'Accepted' },
+  { value: 'REJECTED', label: 'Rejected' },
+  { value: 'EXPIRED', label: 'Expired' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+];
 
 const QuotationManagement = () => {
   const navigate = useNavigate();
@@ -112,6 +126,10 @@ const QuotationManagement = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isStatusOpen, setIsStatusOpen] = useState(false);
+  const [statusTarget, setStatusTarget] = useState(null);
+  const [statusForm, setStatusForm] = useState({ status: 'DRAFT' });
+  const [statusSaving, setStatusSaving] = useState(false);
   const [form, setForm] = useState(defaultForm);
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [enquiryFilter, setEnquiryFilter] = useState(initialEnquiryId);
@@ -245,12 +263,14 @@ const QuotationManagement = () => {
         setHotelOptions((Array.isArray(hotelsPayload?.data) ? hotelsPayload.data : []).map((hotel) => ({
           value: hotel.id,
           label: `${hotel.name || 'Unnamed hotel'}${hotel.category ? ` - ${hotel.category}` : ''}`,
+          raw: hotel,
         })));
       }
       if (vehiclesResponse.ok) {
         setVehicleOptions((Array.isArray(vehiclesPayload?.data) ? vehiclesPayload.data : []).map((vehicle) => ({
           value: vehicle.id,
           label: `${vehicle.name || 'Unnamed vehicle'}${vehicle.vehicle_type ? ` - ${vehicle.vehicle_type}` : ''}`,
+          raw: vehicle,
         })));
       }
     } catch (error) {
@@ -359,18 +379,31 @@ const QuotationManagement = () => {
     }
   }, [tripSelectionType, form.package_id, form.variant_id, form.travel_date, form.return_date]);
 
-  const updateForm = (field, value) => setForm((current) => ({ ...current, [field]: value }));
-  const updateArrayItem = (field, index, key, value) => setForm((current) => ({
-    ...current,
-    [field]: current[field].map((item, itemIndex) => {
+  const updateForm = (field, value) => setForm((current) => {
+    const next = { ...current, [field]: value };
+    if (field === 'discount_amount' || field === 'tax_amount') {
+      next.total_amount = Math.max(0, Number(next.subtotal || 0) - Number(next.discount_amount || 0) + Number(next.tax_amount || 0)).toFixed(2);
+    }
+    return next;
+  });
+  const updateArrayItem = (field, index, key, value) => setForm((current) => {
+    const nextRows = current[field].map((item, itemIndex) => {
       if (itemIndex !== index) return item;
       const nextItem = { ...item, [key]: value };
       if (field === 'items' && (key === 'quantity' || key === 'unit_price')) {
         nextItem.total_price = (Number(nextItem.quantity || 0) * Number(nextItem.unit_price || 0)).toFixed(2);
       }
       return nextItem;
-    }),
-  }));
+    });
+    if (field !== 'items') return { ...current, [field]: nextRows };
+    const subtotal = nextRows.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
+    return {
+      ...current,
+      [field]: nextRows,
+      subtotal: subtotal.toFixed(2),
+      total_amount: Math.max(0, subtotal - Number(current.discount_amount || 0) + Number(current.tax_amount || 0)).toFixed(2),
+    };
+  });
   const addArrayItem = (field, template) => setForm((current) => ({ ...current, [field]: [...current[field], { ...template }] }));
   const removeArrayItem = (field, index) => setForm((current) => ({ ...current, [field]: current[field].filter((_, itemIndex) => itemIndex !== index) }));
 
@@ -404,7 +437,15 @@ const QuotationManagement = () => {
     if (!createSubmitRequestedRef.current) return;
     createSubmitRequestedRef.current = false;
     if (createStep !== quotationSteps.length || !isCreateStepValid(quotationSteps.length)) return;
-    if (!form.enquiry_id.trim() || !form.tour_name.trim()) { toast.error('Enquiry ID and tour name are required'); return; }
+    if (!form.enquiry_id.trim() || !form.tour_name.trim()) { toast.error('Enquiry and tour name are required'); return; }
+    const invalidItem = form.items.find((item) => !item.name.trim() || Number(item.quantity) < 1 || Number(item.unit_price) < 0);
+    const invalidHotel = form.hotels.find((hotel) => !hotel.hotel_name.trim() || !hotel.check_in || !hotel.check_out || Number(hotel.nights) < 1 || Number(hotel.room_count) < 1);
+    const invalidVehicle = form.vehicles.find((vehicle) => !vehicle.vehicle_name.trim() || !vehicle.start_date || !vehicle.end_date || Number(vehicle.rental_minutes) < 1 || Number(vehicle.quantity) < 1);
+    const invalidDay = form.itinerary.find((day) => !day.title.trim() || Number(day.day_number) < 1);
+    if (invalidItem || invalidHotel || invalidVehicle || invalidDay) {
+      toast.error('Complete or remove every component row before creating the quotation.');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -415,12 +456,13 @@ const QuotationManagement = () => {
         tax_amount: Number(form.tax_amount) || 0,
         total_amount: Number(form.total_amount) || 0,
         items: form.items.map((item) => ({ ...item, quantity: Number(item.quantity) || 1, unit_price: String(item.unit_price || 0), total_price: String(item.total_price || 0) })),
-        hotels: form.hotels.map((hotel) => ({ ...hotel, nights: Number(hotel.nights) || 1, room_count: Number(hotel.room_count) || 1 })),
-        vehicles: form.vehicles.map((vehicle) => ({ ...vehicle, rental_minutes: Number(vehicle.rental_minutes) || 1, quantity: Number(vehicle.quantity) || 1 })),
-        itinerary: form.itinerary.map((day, index) => ({ ...day, day_number: Number(day.day_number) || index + 1, sort_order: Number(day.sort_order) || index })),
+        hotels: form.hotels.map((hotel) => ({ ...hotel, check_in: toIso(hotel.check_in), check_out: toIso(hotel.check_out), nights: Number(hotel.nights) || 1, room_count: Number(hotel.room_count) || 1 })),
+        vehicles: form.vehicles.map((vehicle) => ({ ...vehicle, start_date: toIso(vehicle.start_date), end_date: toIso(vehicle.end_date), rental_minutes: Number(vehicle.rental_minutes) || 1, quantity: Number(vehicle.quantity) || 1 })),
+        itinerary: form.itinerary.map((day, index) => ({ ...day, date: day.date ? toIso(day.date) : null, day_number: Number(day.day_number) || index + 1, sort_order: Number(day.sort_order) || index })),
       };
       ['customer_id', 'package_id', 'variant_id', 'destination_id', 'travel_date', 'return_date', 'valid_until', 'terms_and_conditions', 'important_notes', 'inclusion', 'exclusion']
         .forEach((field) => { if (!payload[field]) payload[field] = null; });
+      ['travel_date', 'return_date', 'valid_until'].forEach((field) => { payload[field] = toIso(payload[field]); });
       const response = await apiCall('/api/v1/admin/quotations', 'POST', payload);
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result?.message || result?.detail || 'Unable to create quotation');
@@ -429,6 +471,40 @@ const QuotationManagement = () => {
       closeCreate();
       if (created?.id) navigate(`/quotations/${created.id}`); else await loadQuotations(currentPage, itemsPerPage);
     } catch (error) { handleApiError(error, 'Unable to create quotation'); } finally { setSaving(false); }
+  };
+
+  const openStatusModal = (quotation) => {
+    setStatusTarget(quotation);
+    setStatusForm({ status: quotation.status || 'DRAFT' });
+    setIsStatusOpen(true);
+  };
+
+  const closeStatusModal = () => {
+    if (statusSaving) return;
+    setIsStatusOpen(false);
+    setStatusTarget(null);
+  };
+
+  const updateQuotationStatus = async (event) => {
+    event.preventDefault();
+    if (!statusTarget || statusForm.status === statusTarget.status) {
+      closeStatusModal();
+      return;
+    }
+    setStatusSaving(true);
+    try {
+      const response = await apiCall(`/api/v1/admin/quotations/${statusTarget.id}/status`, 'PATCH', statusForm);
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result?.message || result?.detail || 'Unable to update quotation status');
+      toast.success(result?.message || 'Quotation status updated');
+      setIsStatusOpen(false);
+      setStatusTarget(null);
+      await loadQuotations(currentPage, itemsPerPage, enquiryFilter, statusFilter, searchTerm);
+    } catch (error) {
+      handleApiError(error, 'Unable to update quotation status');
+    } finally {
+      setStatusSaving(false);
+    }
   };
 
   const confirmDelete = async () => {
@@ -455,6 +531,7 @@ const QuotationManagement = () => {
     const variantDateLocked = tripSelectionType === 'PACKAGE'
       && Boolean(form.variant_id)
       && ['travel_date', 'return_date'].includes(field);
+    const pricingLocked = ['subtotal', 'total_amount'].includes(field);
     return (
       <div>
         <label className={labelClass}>{label}</label>
@@ -462,7 +539,7 @@ const QuotationManagement = () => {
           ? <input type="text" readOnly value={form[field] ? formatDate(form[field]) : 'No date configured for this variant'} className={`${inputClass} cursor-not-allowed opacity-70`} />
           : type === 'datetime-local'
             ? <CustomDatePicker value={form[field]} onChange={(value) => updateForm(field, value)} />
-            : <input type="text" inputMode={type === 'number' ? 'decimal' : undefined} value={form[field]} onChange={(event) => updateForm(field, type === 'number' ? numericValue(event.target.value) : event.target.value)} className={inputClass} />}
+            : <input type="text" inputMode={type === 'number' ? 'decimal' : undefined} readOnly={pricingLocked} value={form[field]} onChange={(event) => updateForm(field, type === 'number' ? numericValue(event.target.value) : event.target.value)} className={`${inputClass} ${pricingLocked ? 'cursor-not-allowed bg-slate-100 font-semibold dark:bg-gray-800' : ''}`} />}
       </div>
     );
   };
@@ -479,7 +556,8 @@ const QuotationManagement = () => {
     <section className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-gray-700">
       <div className="flex items-center justify-between"><h3 className="font-semibold text-slate-900 dark:text-slate-100">Hotels</h3><button type="button" onClick={() => addArrayItem('hotels', emptyHotel)} className="text-sm font-semibold text-cyan-700">Add</button></div>
       {form.hotels.map((hotel, index) => <div key={`hotel-${index}`} className="grid gap-3 rounded-xl bg-slate-50 p-3 dark:bg-gray-900/50 md:grid-cols-2">
-        <div><label className={labelClass}>Hotel</label><SelectField options={hotelOptions} isLoading={referencesLoading} isSearchable value={hotelOptions.find((option) => option.value === hotel.hotel_id) || null} onChange={(option) => updateArrayItem('hotels', index, 'hotel_id', option?.value || '')} placeholder="Select hotel" isClearable menuPlacement="auto" /></div>
+        <div><label className={labelClass}>Hotel reference</label><SelectField options={hotelOptions} isLoading={referencesLoading} isSearchable value={hotelOptions.find((option) => option.value === hotel.hotel_id) || null} onChange={(option) => { updateArrayItem('hotels', index, 'hotel_id', option?.value || ''); updateArrayItem('hotels', index, 'hotel_name', option?.raw?.name || option?.label?.split(' - ')[0] || ''); }} placeholder="Select hotel or enter a name below" isClearable menuPlacement="auto" /></div>
+        <div><label className={labelClass}>Hotel name <span className="text-rose-500">*</span></label><input type="text" value={hotel.hotel_name || ''} onChange={(event) => updateArrayItem('hotels', index, 'hotel_name', event.target.value)} className={inputClass} placeholder="e.g. Mountain View Resort" /></div>
         {['check_in', 'check_out'].map((key) => <div key={key}><label className={labelClass}>{key === 'check_in' ? 'Check in' : 'Check out'}</label><CustomDatePicker value={hotel[key] || ''} includeTime onChange={(value) => updateArrayItem('hotels', index, key, value)} /></div>)}
         {[['nights', 'Nights'], ['room_count', 'Rooms']].map(([key, label]) => <div key={key}><label className={labelClass}>{label}</label><input type="text" inputMode="decimal" value={hotel[key] ?? ''} onChange={(event) => updateArrayItem('hotels', index, key, numericValue(event.target.value))} className={inputClass} /></div>)}
         <div><label className={labelClass}>Room type</label><SelectField options={roomTypeOptions} value={roomTypeOptions.find((option) => option.value === hotel.room_type) || null} onChange={(option) => updateArrayItem('hotels', index, 'room_type', option?.value || '')} isSearchable={false} menuPlacement="auto" /></div>
@@ -491,7 +569,8 @@ const QuotationManagement = () => {
     <section className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-gray-700">
       <div className="flex items-center justify-between"><h3 className="font-semibold text-slate-900 dark:text-slate-100">Vehicles</h3><button type="button" onClick={() => addArrayItem('vehicles', emptyVehicle)} className="text-sm font-semibold text-cyan-700">Add</button></div>
       {form.vehicles.map((vehicle, index) => <div key={`vehicle-${index}`} className="grid gap-3 rounded-xl bg-slate-50 p-3 dark:bg-gray-900/50 md:grid-cols-2">
-        <div><label className={labelClass}>Vehicle</label><SelectField options={vehicleOptions} isLoading={referencesLoading} isSearchable value={vehicleOptions.find((option) => option.value === vehicle.vehicle_id) || null} onChange={(option) => updateArrayItem('vehicles', index, 'vehicle_id', option?.value || '')} placeholder="Select vehicle" isClearable menuPlacement="auto" /></div>
+        <div><label className={labelClass}>Vehicle reference</label><SelectField options={vehicleOptions} isLoading={referencesLoading} isSearchable value={vehicleOptions.find((option) => option.value === vehicle.vehicle_id) || null} onChange={(option) => { updateArrayItem('vehicles', index, 'vehicle_id', option?.value || ''); updateArrayItem('vehicles', index, 'vehicle_name', option?.raw?.name || option?.label?.split(' - ')[0] || ''); }} placeholder="Select vehicle or enter a name below" isClearable menuPlacement="auto" /></div>
+        <div><label className={labelClass}>Vehicle name <span className="text-rose-500">*</span></label><input type="text" value={vehicle.vehicle_name || ''} onChange={(event) => updateArrayItem('vehicles', index, 'vehicle_name', event.target.value)} className={inputClass} placeholder="e.g. Innova Crysta" /></div>
         <div><label className={labelClass}>Vehicle type</label><SelectField options={vehicleTypeOptions} value={vehicleTypeOptions.find((option) => option.value === vehicle.vehicle_type) || null} onChange={(option) => updateArrayItem('vehicles', index, 'vehicle_type', option?.value || '')} isSearchable={false} menuPlacement="auto" /></div>
         {['start_date', 'end_date'].map((key) => <div key={key}><label className={labelClass}>{key === 'start_date' ? 'Start date' : 'End date'}</label><CustomDatePicker value={vehicle[key] || ''} includeTime onChange={(value) => updateArrayItem('vehicles', index, key, value)} /></div>)}
         {[['rental_minutes', 'Rental minutes'], ['quantity', 'Quantity']].map(([key, label]) => <div key={key}><label className={labelClass}>{label}</label><input type="text" inputMode="decimal" value={vehicle[key] ?? ''} onChange={(event) => updateArrayItem('vehicles', index, key, numericValue(event.target.value))} className={inputClass} /></div>)}
@@ -589,7 +668,40 @@ const QuotationManagement = () => {
       </span>
     </div>
 
-    {/* Filter Modal */}
+    {/* Status update modal */}
+    <Modal
+      isOpen={isStatusOpen}
+      onClose={closeStatusModal}
+      title="Update quotation status"
+      icon={Pencil}
+      size="sm"
+      footer={(
+        <div className="flex w-full justify-end gap-3">
+          <button type="button" onClick={closeStatusModal} className="rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:border-gray-600 dark:text-gray-200">Cancel</button>
+          <button type="submit" form="quotation-status-form" disabled={statusSaving || !statusTarget || statusForm.status === statusTarget?.status} className="rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{statusSaving ? 'Updating...' : 'Save status'}</button>
+        </div>
+      )}
+    >
+      <form id="quotation-status-form" onSubmit={updateQuotationStatus} className="space-y-4 p-1">
+        <div>
+          <p className="text-sm text-gray-500">Change the lifecycle status for <span className="font-semibold text-gray-700 dark:text-gray-200">{statusTarget?.quotation_code || 'this quotation'}</span>.</p>
+          <p className="mt-1 text-xs text-gray-400">Sending the quotation email is handled from the quotation details page.</p>
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
+          <SelectField
+            options={quotationStatusOptions}
+            value={quotationStatusOptions.find((option) => option.value === statusForm.status) || null}
+            onChange={(option) => setStatusForm({ status: option?.value || 'DRAFT' })}
+            isSearchable={false}
+            menuPlacement="auto"
+          />
+        </div>
+        {statusForm.status === 'REJECTED' && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/20 dark:text-rose-300">A rejected quotation can be revised from its details page by creating a new version.</p>}
+        {statusForm.status === 'ACCEPTED' && <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-300">Use “Create booking” after acceptance to continue the booking workflow.</p>}
+      </form>
+    </Modal>
+
     <Modal
       isOpen={isFilterOpen}
       onClose={() => setIsFilterOpen(false)}
@@ -640,10 +752,7 @@ const QuotationManagement = () => {
             className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/15 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
           >
             <option value="">All Statuses</option>
-            <option value="DRAFT">Draft</option>
-            <option value="SENT">Sent</option>
-            <option value="ACCEPTED">Accepted</option>
-            <option value="REJECTED">Rejected</option>
+            {quotationStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </div>
       </div>
@@ -714,6 +823,7 @@ const QuotationManagement = () => {
                 </div>
                 <ActionMenu actions={[
                   { label: 'Open quotation', icon: <ArrowRight className="h-4 w-4" />, onClick: () => navigate(`/quotations/${quotation.id}`) },
+                  { label: 'Update status', icon: <Pencil className="h-4 w-4" />, onClick: () => openStatusModal(quotation) },
                   { label: 'Create booking', icon: <Plus className="h-4 w-4" />, onClick: () => navigate('/bookings', { state: { quotation_id: quotation.id, enquiry_id: quotation.enquiry_id, customer_id: quotation.customer_id } }) },
                   { label: 'Delete quotation', icon: <Trash2 className="h-4 w-4" />, onClick: () => { setDeleteTarget(quotation); setIsDeleteOpen(true); }, className: 'text-rose-600 dark:text-rose-400' }
                 ]} />
@@ -758,6 +868,7 @@ const QuotationManagement = () => {
                     <td className="px-4 py-4 text-right">
                       <ActionMenu actions={[
                         { label: 'Open quotation', icon: <ArrowRight className="h-4 w-4" />, onClick: () => navigate(`/quotations/${quotation.id}`) },
+                        { label: 'Update status', icon: <Pencil className="h-4 w-4" />, onClick: () => openStatusModal(quotation) },
                         { label: 'Create booking', icon: <Plus className="h-4 w-4" />, onClick: () => navigate('/bookings', { state: { quotation_id: quotation.id, enquiry_id: quotation.enquiry_id, customer_id: quotation.customer_id } }) },
                         { label: 'Delete quotation', icon: <Trash2 className="h-4 w-4" />, onClick: () => { setDeleteTarget(quotation); setIsDeleteOpen(true); }, className: 'text-rose-600 dark:text-rose-400' }
                       ]} />
@@ -787,7 +898,7 @@ const QuotationManagement = () => {
 
     <Modal
       isOpen={isCreateOpen}
-      onClose={closeCreate}
+      onClose={() => { if (!saving) closeCreate(); }}
       title="New quotation"
       icon={FileText}
       size="3xl"
