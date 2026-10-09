@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import ManagementTable from '../component/common/ManagementTable';
 import toast from 'react-hot-toast';
 import { FileText, Plus, Trash2, RefreshCw, Eye, Pencil, Download, Filter } from 'lucide-react';
 import Modal from '../component/common/Modal';
@@ -87,7 +86,13 @@ const buildCustomerLabel = (customer) => {
 const DocumentPreviewContent = ({ doc }) => {
   const { fileUrl, mimeType, loading, error } = usePrivateDocumentFile(doc);
   if (!doc) return null;
-  const fileType = mimeType.includes('pdf') ? 'pdf' : mimeType.startsWith('video/') ? 'video' : getFileType(doc.file_url || '', doc.file_name || '');
+  const fileType = mimeType.startsWith('image/')
+    ? 'image'
+    : mimeType.includes('pdf')
+      ? 'pdf'
+      : mimeType.startsWith('video/')
+        ? 'video'
+        : getFileType(doc.file_url || '', doc.file_name || '');
   return (
     <div
       style={{ background: '#000' }}
@@ -709,128 +714,129 @@ const DocumentManagement = () => {
         </div>
       </div>
 
-      <div className="overflow-hidden md:rounded-2xl md:border md:border-gray-200 md:bg-white md:shadow-sm dark:border-gray-700 dark:bg-gray-900">
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
         {loading ? (
           <div className="p-12 text-center text-sm text-gray-500">Loading documents...</div>
         ) : !hasDocuments ? (
           <div className="p-12 text-center text-sm text-gray-500">No documents uploaded yet.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <ManagementTable><table className="min-w-full divide-y divide-gray-200 text-left text-sm dark:divide-gray-700">
-              <thead className="bg-gray-50 dark:bg-gray-800/70">
-                <tr>
-                  <th className="w-10 px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={allOnPageSelected}
-                      onChange={toggleSelectAll}
-                      className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                    />
-                  </th>
-                  <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Document</th>
-                  {documentScope === 'booking' && <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Booking</th>}
-                  <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Customer</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Uploaded by</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Type</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Uploaded</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-700 dark:text-gray-200">Actions</th>
-                </tr>
-              </thead>
+          <div className="space-y-3 p-3 sm:p-4">
+            {selectableDocuments.length > 0 && (
+              <label className="flex w-fit cursor-pointer items-center gap-2 px-1 pb-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  aria-label="Select all active documents on this page"
+                  checked={allOnPageSelected}
+                  onChange={toggleSelectAll}
+                  className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                Select all on this page
+              </label>
+            )}
+            <div className="mb-1 hidden grid-cols-[minmax(0,2fr)_minmax(140px,1fr)_minmax(140px,1fr)_minmax(130px,0.9fr)_minmax(130px,0.9fr)_auto] gap-4 px-4 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 lg:grid">
+              <span>Document</span>
+              <span>Customer</span>
+              <span>Uploaded by</span>
+              <span>Type</span>
+              <span>Uploaded date</span>
+              <span className="sr-only">Actions</span>
+            </div>
+            {documents.map((doc) => (
+              <article
+                key={doc.id}
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-4 rounded-2xl border border-gray-200 bg-white p-4 transition-colors hover:border-emerald-300 hover:bg-emerald-50/30 dark:border-gray-700 dark:bg-gray-800/60 dark:hover:border-emerald-800 dark:hover:bg-emerald-900/10 lg:grid-cols-[minmax(0,2fr)_minmax(140px,1fr)_minmax(140px,1fr)_minmax(130px,0.9fr)_minmax(130px,0.9fr)_auto]"
+              >
+                <div className="flex min-w-0 items-center gap-3 lg:col-start-1 lg:row-start-1">
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${doc.title || 'document'}`}
+                    checked={selectedIds.has(doc.id)}
+                    onChange={() => toggleSelectOne(doc.id)}
+                    disabled={!doc.is_active}
+                    className="h-4 w-4 shrink-0 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => doc.is_active && setPreviewDoc(doc)}
+                      disabled={!doc.is_active}
+                      className="block max-w-full truncate text-left font-semibold text-gray-900 hover:text-emerald-700 disabled:cursor-default dark:text-gray-100 dark:hover:text-emerald-300"
+                    >
+                      {doc.title || doc.file_name || 'Untitled document'}
+                    </button>
+                    <div className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
+                      {doc.description || (documentScope === 'booking' ? doc.booking_code || 'Booking document' : 'Identity document')}
+                    </div>
+                  </div>
+                </div>
 
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {documents.map((doc) => (
-                  <tr
-                    key={doc.id}
-                    onClick={() => doc.is_active && setPreviewDoc(doc)}
-                    className={`transition-colors ${doc.is_active ? 'cursor-pointer hover:bg-emerald-50/60 dark:hover:bg-emerald-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}
-                  >
-                    <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(doc.id)}
-                        onChange={() => toggleSelectOne(doc.id)}
-                        disabled={!doc.is_active}
-                        className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                      />
-                    </td>
+                <div className="col-span-2 min-w-0 lg:col-span-1 lg:col-start-2 lg:row-start-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 lg:hidden">Customer</div>
+                  <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">
+                    {doc.customer_name || doc.customer_id || 'N/A'}
+                  </div>
+                  {documentScope === 'booking' && (
+                    <div className="truncate text-xs text-gray-500 dark:text-gray-400">{doc.booking_code || doc.booking_id || 'Booking'}</div>
+                  )}
+                </div>
 
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
-                          <FileText className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <div className="font-semibold text-gray-900 dark:text-white">{doc.title || doc.file_name || 'Untitled document'}</div>
-                          {doc.description && (
-                            <div className="max-w-xs truncate text-xs text-gray-500 dark:text-gray-400">{doc.description}</div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
+                <div className="col-span-2 min-w-0 lg:col-span-1 lg:col-start-3 lg:row-start-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 lg:hidden">Uploaded by</div>
+                  <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{doc.uploader_name || 'N/A'}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    {doc.type === 'incoming' ? 'Customer upload' : 'Admin upload'}
+                  </div>
+                </div>
 
-                    {documentScope === 'booking' && (
-                      <td className="px-4 py-4 text-sm text-gray-700 dark:text-gray-300">
-                        <div className="font-medium">{doc.booking_code || 'Booking'}</div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">{doc.booking_id || 'N/A'}</div>
-                      </td>
-                    )}
+                <div className="lg:col-start-4 lg:row-start-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 lg:hidden">Type</div>
+                  <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                    {(doc.document_type || 'N/A').replaceAll('_', ' ')}
+                  </span>
+                </div>
 
-                    <td className="px-4 py-4 text-sm text-gray-700 dark:text-gray-300">
-                      <div className="font-medium">{doc.customer_name || doc.customer_id || 'N/A'}</div>
-                    </td>
+                <div className="lg:col-start-5 lg:row-start-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 lg:hidden">Uploaded date</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-300">{formatDate(doc.uploaded_at)}</div>
+                </div>
 
-                    <td className="px-4 py-4 text-sm text-gray-700 dark:text-gray-300">
-                      <div className="font-medium">{doc.uploader_name || 'N/A'}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {doc.type === 'incoming' ? 'Customer upload' : 'Admin upload'}
-                      </div>
-                    </td>
-
-                    <td className="px-4 py-4">
-                      <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-                        {doc.document_type || 'N/A'}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-4 text-xs text-gray-500 dark:text-gray-400">{formatDate(doc.uploaded_at)}</td>
-                    <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end">
-                        <ActionMenu
-                          menuId={doc.id}
-                          actions={[
-                            {
-                              label: 'Preview Document',
-                              icon: <Eye className="h-4 w-4 text-emerald-500" />,
-                              onClick: () => doc.is_active && setPreviewDoc(doc),
-                              disabled: !doc.is_active,
-                            },
-                            {
-                              label: 'Download Document',
-                              icon: <Download className="h-4 w-4 text-sky-500" />,
-                              onClick: () => handleDownload(doc),
-                              disabled: !doc.is_active,
-                            },
-                            {
-                              label: 'Edit Document',
-                              icon: <Pencil className="h-4 w-4 text-indigo-500" />,
-                              onClick: () => openEditModal(doc),
-                              disabled: !doc.is_active,
-                            },
-                            {
-                              label: 'Delete Document',
-                              icon: <Trash2 className="h-4 w-4 text-red-500" />,
-                              className: 'text-red-600 hover:text-red-700 dark:text-red-400',
-                              onClick: () => handleDelete(doc),
-                              disabled: !doc.is_active,
-                            },
-                          ]}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table></ManagementTable>
+                <div className="col-start-2 row-start-1 lg:col-start-6 lg:row-start-1" onClick={(event) => event.stopPropagation()}>
+                  <ActionMenu
+                    menuId={doc.id}
+                    actions={[
+                      {
+                        label: 'Preview Document',
+                        icon: <Eye className="h-4 w-4 text-emerald-500" />,
+                        onClick: () => doc.is_active && setPreviewDoc(doc),
+                        disabled: !doc.is_active,
+                      },
+                      {
+                        label: 'Download Document',
+                        icon: <Download className="h-4 w-4 text-sky-500" />,
+                        onClick: () => handleDownload(doc),
+                        disabled: !doc.is_active,
+                      },
+                      {
+                        label: 'Edit Document',
+                        icon: <Pencil className="h-4 w-4 text-indigo-500" />,
+                        onClick: () => openEditModal(doc),
+                        disabled: !doc.is_active,
+                      },
+                      {
+                        label: 'Delete Document',
+                        icon: <Trash2 className="h-4 w-4 text-red-500" />,
+                        className: 'text-red-600 hover:text-red-700 dark:text-red-400',
+                        onClick: () => handleDelete(doc),
+                        disabled: !doc.is_active,
+                      },
+                    ]}
+                  />
+                </div>
+              </article>
+            ))}
           </div>
         )}
 
