@@ -2,6 +2,13 @@ import { io } from "socket.io-client";
 import { API_BASE } from "../utils/config";
 
 const REALTIME_BASE = API_BASE || "https://api.gantabyaa.in";
+let adminRealtimeSocket = null;
+
+export function requestAdminRealtimeSnapshot() {
+  if (!adminRealtimeSocket?.connected) return false;
+  adminRealtimeSocket.emit("join_analytics");
+  return true;
+}
 
 export function createAdminRealtimeSocket({ token, onStatus, onEvent } = {}) {
   if (!token) return null;
@@ -14,6 +21,7 @@ export function createAdminRealtimeSocket({ token, onStatus, onEvent } = {}) {
     reconnection: true,
     reconnectionAttempts: Infinity,
   });
+  adminRealtimeSocket = socket;
 
   socket.on("connect", () => {
     onStatus?.("connected");

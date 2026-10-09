@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   BarChart3,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -19,12 +20,14 @@ import {
   fetchAnalyticsOverview,
   fetchConversionFunnel,
   fetchLeadScoreDistribution,
+  fetchLiveStats,
   fetchTopEvents,
   fetchTopPages,
   fetchUtmPerformance,
   fetchVisitorDetails,
   fetchVisitors,
 } from '../api/analytics';
+import { requestAdminRealtimeSnapshot } from '../realtime/socket';
 
 const numberFormat = value => Number(value || 0).toLocaleString('en-IN');
 const dateFormat = value => {
@@ -60,6 +63,40 @@ const ANALYTICS_REALTIME_EVENTS = new Set([
   'analytics:visitor_event',
   'analytics.visitor_event',
 ]);
+const LIVE_ACTIVITY_EVENTS = new Set([
+  'visitor_connected',
+  'visitor_disconnected',
+  'visitor_identified',
+  'visitor_location_updated',
+  'page_view',
+  'page_navigation',
+  'activity',
+  'click',
+  'session_updated',
+  'session_started',
+  'session_heartbeat',
+  'session_ended',
+  'visitor_event',
+]);
+
+const canonicalEventName = eventName => eventName?.replace(/^analytics[:.]/, '') || '';
+
+function liveActivityLabel(eventName, payload) {
+  const event = canonicalEventName(eventName);
+  if (event === 'page_view' || event === 'page_navigation') return `Viewed ${payload.page || 'a page'}`;
+  if (event === 'activity') return String(payload.activity || 'Activity').replaceAll('_', ' ');
+  if (event === 'click') return `Clicked ${payload.selector || 'an element'}`;
+  if (event === 'visitor_connected') return 'Came online';
+  if (event === 'visitor_disconnected') return 'Went offline';
+  if (event === 'visitor_identified') return payload.customer_id ? 'Identified as customer' : 'Visitor identified';
+  if (event === 'visitor_event') return String(payload.event_name || 'Visitor event').replaceAll('_', ' ');
+  if (event === 'session_started') return `Started session${payload.landing_page ? ` on ${payload.landing_page}` : ''}`;
+  if (event === 'session_ended') return 'Ended session';
+  if (event === 'session_heartbeat') return 'Active session';
+  if (event === 'session_updated') return String(payload.activity || 'Session updated').replaceAll('_', ' ');
+  if (event === 'visitor_location_updated') return 'Location updated';
+  return event.replaceAll('_', ' ');
+}
 
 function Card({ children, className = '' }) {
   return <section className={`rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 ${className}`}>{children}</section>;
@@ -84,6 +121,40 @@ function EmptyState({ message = 'No data available for this period.' }) {
   return <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">{message}</div>;
 }
 
+function ProfileAvatar({ src, name, isCustomer = false }) {
+  const initials = name?.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase();
+  return (
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 text-xs font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+      {src ? <img src={src} alt={name || 'Customer profile'} className="h-full w-full object-cover" /> : initials || (isCustomer ? <Users className="h-4 w-4" /> : <Eye className="h-4 w-4" />)}
+    </span>
+  );
+}
+
+function TrackedVisitorRow({ visitor, onViewDetails, isOnline }) {
+  const isCustomer = Boolean(visitor.customer_id);
+  const displayName = isCustomer ? visitor.customer_name || 'Customer' : visitor.visitor_code || 'Anonymous visitor';
+  return (
+    <tr>
+      <td className="py-3">
+        <div className="flex items-center gap-2.5">
+          <ProfileAvatar src={visitor.customer_profile_pic} name={displayName} isCustomer={isCustomer} />
+          <div className="min-w-0">
+            <p className="truncate font-semibold">{displayName}</p>
+            <p className="mt-0.5 flex items-center gap-1.5 truncate text-gray-500">
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
+              <span className="truncate">{isOnline ? 'Online' : 'Offline'} · {isCustomer ? visitor.customer_email || visitor.customer_mobile || 'Customer account' : visitor.fingerprint || 'No fingerprint'}</span>
+            </p>
+          </div>
+        </div>
+      </td>
+      <td className="py-3">{[visitor.city, visitor.country].filter(Boolean).join(', ') || 'Unknown'}</td>
+      <td className="py-3">{[visitor.device, visitor.browser, visitor.os].filter(Boolean).join(' · ') || 'Unknown'}</td>
+      <td className="py-3 text-gray-500">{dateFormat(visitor.last_seen)}</td>
+      <td className="py-3 text-right"><button type="button" onClick={() => onViewDetails(visitor)} className="rounded-lg border border-gray-200 px-2.5 py-1.5 font-semibold text-indigo-600 hover:bg-indigo-50 dark:border-gray-700 dark:hover:bg-indigo-950/30">View profile</button></td>
+    </tr>
+  );
+}
+
 const Analytics = () => {
   const [days, setDays] = useState(30);
   const [overview, setOverview] = useState(null);
@@ -94,6 +165,10 @@ const Analytics = () => {
   const [scoreDistribution, setScoreDistribution] = useState([]);
   const [funnel, setFunnel] = useState([]);
   const [visitors, setVisitors] = useState([]);
+  const [liveVisitors, setLiveVisitors] = useState([]);
+  const [liveActivities, setLiveActivities] = useState([]);
+  const [expandedLiveVisitors, setExpandedLiveVisitors] = useState([]);
+  const [livePresenceError, setLivePresenceError] = useState('');
   const [visitorPagination, setVisitorPagination] = useState({});
   const [visitorPage, setVisitorPage] = useState(1);
   const [visitorSearch, setVisitorSearch] = useState('');
@@ -103,8 +178,9 @@ const Analytics = () => {
   const [visitorsLoading, setVisitorsLoading] = useState(true);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [lastRealtimeEvent, setLastRealtimeEvent] = useState(null);
   const realtimeRefreshTimer = useRef(null);
+  const livePresenceRevision = useRef(0);
+  const visitorRequestRevision = useRef(0);
 
   const loadAnalytics = useCallback(async () => {
     setLoading(true);
@@ -134,26 +210,89 @@ const Analytics = () => {
   }, [days]);
 
   const loadVisitors = useCallback(async () => {
+    const requestRevision = ++visitorRequestRevision.current;
     setVisitorsLoading(true);
     try {
       const result = await fetchVisitors({ search: visitorSearch, page: visitorPage, pageSize: 20 });
-      setVisitors(result.items);
-      setVisitorPagination(result.pagination);
+      if (requestRevision === visitorRequestRevision.current) {
+        setVisitors(result.items);
+        setVisitorPagination(result.pagination);
+      }
     } catch (requestError) {
-      setError(requestError.message || 'Unable to load visitors.');
+      if (requestRevision === visitorRequestRevision.current) setError(requestError.message || 'Unable to load visitors.');
     } finally {
-      setVisitorsLoading(false);
+      if (requestRevision === visitorRequestRevision.current) setVisitorsLoading(false);
     }
   }, [visitorPage, visitorSearch]);
 
+  const loadLivePresence = useCallback(async () => {
+    const revision = livePresenceRevision.current;
+    try {
+      const result = await fetchLiveStats();
+      if (revision === livePresenceRevision.current) {
+        setLiveVisitors(Array.isArray(result.active_visitors) ? result.active_visitors : []);
+        setLivePresenceError('');
+      }
+    } catch (requestError) {
+      setLivePresenceError(requestError.message || 'Unable to load live visitor activity.');
+    }
+  }, []);
+
   useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
   useEffect(() => { loadVisitors(); }, [loadVisitors]);
+  useEffect(() => {
+    loadLivePresence();
+    requestAdminRealtimeSnapshot();
+  }, [loadLivePresence]);
 
   useEffect(() => {
     const handleRealtimeEvent = event => {
       const detail = event.detail || {};
-      setLastRealtimeEvent({ event: detail.event, payload: detail.payload, receivedAt: new Date() });
-      if (ANALYTICS_REALTIME_EVENTS.has(detail.event)) {
+      const eventName = detail.event || '';
+      const payload = detail.payload || {};
+      const canonicalEvent = canonicalEventName(eventName);
+      const visitorId = payload.visitor_id;
+      if (eventName === 'live_stats') {
+        livePresenceRevision.current += 1;
+        if (Array.isArray(payload.active_visitors)) {
+          setLiveVisitors(payload.active_visitors);
+          setLivePresenceError('');
+        } else if (!requestAdminRealtimeSnapshot()) {
+          loadLivePresence();
+        }
+      } else if (visitorId && ['visitor_connected', 'visitor_disconnected', 'visitor_identified', 'page_view', 'page_navigation', 'activity', 'click', 'session_updated', 'visitor_location_updated'].includes(canonicalEvent)) {
+        livePresenceRevision.current += 1;
+        setLiveVisitors(current => {
+          if (canonicalEvent === 'visitor_disconnected') return current.filter(visitor => visitor.visitor_id !== visitorId);
+          const existing = current.find(visitor => visitor.visitor_id === visitorId);
+          if (!existing && canonicalEvent !== 'visitor_connected') return current;
+          const timestamp = payload.timestamp || payload.created_at || new Date().toISOString();
+          const updated = {
+            ...(existing || {}),
+            ...payload,
+            visitor_id: visitorId,
+            page: payload.page || payload.landing_page || existing?.page || null,
+            activity: payload.activity || (canonicalEvent === 'page_view' ? 'page_view' : existing?.activity),
+            last_activity: payload.last_activity || timestamp,
+            visitor_type: payload.visitor_type || (payload.customer_id ? 'customer' : existing?.visitor_type || 'visitor'),
+            is_anonymous: payload.is_anonymous ?? (payload.customer_id !== undefined ? !payload.customer_id : existing?.is_anonymous ?? true),
+          };
+          return existing
+            ? current.map(visitor => visitor.visitor_id === visitorId ? updated : visitor)
+            : [updated, ...current];
+        });
+      }
+
+      if (visitorId && LIVE_ACTIVITY_EVENTS.has(canonicalEvent)) {
+        const occurredAt = payload.timestamp || payload.created_at || payload.started_at || payload.ended_at || new Date().toISOString();
+        const activityId = payload.event_id || `${visitorId}:${canonicalEvent}:${occurredAt}`;
+        setLiveActivities(current => [
+          { id: activityId, visitorId, event: canonicalEvent, label: liveActivityLabel(eventName, payload), occurredAt, visitorType: payload.visitor_type || (payload.customer_id ? 'customer' : 'visitor') },
+          ...current.filter(item => item.id !== activityId),
+        ].slice(0, 30));
+      }
+
+      if (ANALYTICS_REALTIME_EVENTS.has(eventName)) {
         window.clearTimeout(realtimeRefreshTimer.current);
         realtimeRefreshTimer.current = window.setTimeout(() => {
           loadAnalytics();
@@ -166,7 +305,7 @@ const Analytics = () => {
       window.removeEventListener('cobtravels:realtime:event', handleRealtimeEvent);
       window.clearTimeout(realtimeRefreshTimer.current);
     };
-  }, [loadAnalytics, loadVisitors]);
+  }, [loadAnalytics, loadLivePresence, loadVisitors]);
 
   const openVisitor = async visitor => {
     setDetailsLoading(true);
@@ -188,11 +327,11 @@ const Analytics = () => {
   const statCards = useMemo(() => [
     { label: 'Total Visitors', value: overview?.total_visitors, icon: Users, color: 'indigo' },
     { label: 'Visitors Today', value: overview?.visitors_today, icon: Eye, color: 'blue' },
-    { label: 'Active Sessions', value: overview?.active_sessions, icon: Activity, color: 'emerald' },
+    { label: 'Live Visitors', value: liveVisitors.length, icon: Activity, color: 'emerald' },
     { label: 'Events Today', value: overview?.total_events_today, icon: BarChart3, color: 'violet' },
     { label: 'Average Lead Score', value: Number(overview?.average_lead_score || 0).toFixed(2), icon: Target, color: 'amber' },
     { label: 'High-intent Visitors', value: overview?.high_intent_visitors_count, icon: Target, color: 'rose' },
-  ], [overview]);
+  ], [liveVisitors.length, overview]);
 
   return (
     <div className="space-y-5 pb-8 text-gray-900 dark:text-gray-100">
@@ -207,7 +346,6 @@ const Analytics = () => {
             <option value={7}>Last 7 days</option>
             <option value={30}>Last 30 days</option>
             <option value={90}>Last 90 days</option>
-            <option value={365}>Last year</option>
           </select>
           <button type="button" onClick={() => { loadAnalytics(); loadVisitors(); }} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800">
             <RefreshCw className={`h-4 w-4 ${loading || visitorsLoading ? 'animate-spin' : ''}`} /> Refresh
@@ -270,13 +408,52 @@ const Analytics = () => {
       </Card>
 
       <Card>
-        <SectionTitle icon={Users} title="Tracked visitors" subtitle="Search and inspect visitor sessions and recent events" action={<div className="flex items-center gap-2 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Realtime enabled</div>} />
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input value={visitorSearchInput} onChange={event => setVisitorSearchInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { setVisitorPage(1); setVisitorSearch(visitorSearchInput); } }} placeholder="Search fingerprint, IP, city, country, browser..." className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-indigo-400 dark:border-gray-700 dark:bg-gray-900" /></div><button type="button" onClick={() => { setVisitorPage(1); setVisitorSearch(visitorSearchInput); }} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Search</button></div>
-        {visitorsLoading ? <div className="flex justify-center p-10"><RefreshCw className="h-5 w-5 animate-spin text-indigo-500" /></div> : visitors.length ? <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="border-b border-gray-100 text-[10px] uppercase tracking-wider text-gray-500 dark:border-gray-800"><tr><th className="pb-3">Visitor</th><th className="pb-3">Location</th><th className="pb-3">Device</th><th className="pb-3">Last seen</th><th className="pb-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-gray-100 dark:divide-gray-800">{visitors.map(visitor => <tr key={visitor.id}><td className="py-3"><p className="font-semibold">{visitor.visitor_code || visitor.id?.slice(0, 8)}</p><p className="mt-0.5 text-gray-500">{visitor.fingerprint || 'No fingerprint'}</p></td><td className="py-3">{[visitor.city, visitor.country].filter(Boolean).join(', ') || 'Unknown'}</td><td className="py-3">{[visitor.device, visitor.browser, visitor.os].filter(Boolean).join(' · ') || 'Unknown'}</td><td className="py-3 text-gray-500">{dateFormat(visitor.last_seen)}</td><td className="py-3 text-right"><button type="button" onClick={() => openVisitor(visitor)} className="rounded-lg border border-gray-200 px-2.5 py-1.5 font-semibold text-indigo-600 hover:bg-indigo-50 dark:border-gray-700 dark:hover:bg-indigo-950/30">View details</button></td></tr>)}</tbody></table></div> : <EmptyState message="No visitors match this search." />}
-        <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4 text-xs dark:border-gray-800"><span className="text-gray-500">{numberFormat(visitorPagination.total_items)} total visitors</span><div className="flex items-center gap-2"><button type="button" disabled={!visitorPagination.has_previous} onClick={() => setVisitorPage(page => Math.max(1, page - 1))} className="rounded-lg border border-gray-200 p-1.5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700"><ChevronLeft className="h-4 w-4" /></button><span>Page {visitorPage} of {pageTotal}</span><button type="button" disabled={!visitorPagination.has_next} onClick={() => setVisitorPage(page => page + 1)} className="rounded-lg border border-gray-200 p-1.5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700"><ChevronRight className="h-4 w-4" /></button></div></div>
+        <SectionTitle icon={Activity} title="Live visitors" subtitle="Select a visitor to expand their activity" action={<div className="flex items-center gap-3 text-[11px] font-semibold"><span className="text-blue-700 dark:text-blue-300">{numberFormat(liveVisitors.filter(visitor => visitor.visitor_type === 'customer' || visitor.customer_id).length)} customers</span><span className="text-gray-500">{numberFormat(liveVisitors.filter(visitor => visitor.visitor_type !== 'customer' && !visitor.customer_id).length)} visitors</span></div>} />
+        {livePresenceError && <p className="mb-3 text-xs text-amber-700 dark:text-amber-300">{livePresenceError}</p>}
+        {liveVisitors.length ? <div className="divide-y divide-gray-100 dark:divide-gray-800">
+          {liveVisitors.map(visitor => {
+            const isCustomer = visitor.visitor_type === 'customer' || Boolean(visitor.customer_id);
+            const displayName = isCustomer ? visitor.customer_name || 'Customer' : visitor.visitor_code || 'Anonymous visitor';
+            const activities = liveActivities.filter(item => item.visitorId === visitor.visitor_id);
+            const isExpanded = expandedLiveVisitors.includes(visitor.visitor_id);
+            return <div key={visitor.visitor_id} className="py-2">
+              <button
+                type="button"
+                aria-expanded={isExpanded}
+                onClick={() => setExpandedLiveVisitors(current => isExpanded
+                  ? current.filter(id => id !== visitor.visitor_id)
+                  : [...current, visitor.visitor_id])}
+                className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/60"
+              >
+                <ProfileAvatar src={visitor.customer_profile_pic} name={displayName} isCustomer={isCustomer} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="truncate text-sm font-semibold">{displayName}</span>
+                    <span className={`text-[10px] font-semibold uppercase ${isCustomer ? 'text-blue-600 dark:text-blue-300' : 'text-emerald-700 dark:text-emerald-300'}`}>{isCustomer ? 'Customer' : 'Visitor'}</span>
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs text-gray-500">{visitor.page || visitor.current_url || 'Page not reported'} · {[visitor.city, visitor.country].filter(Boolean).join(', ') || visitor.device || 'Location unknown'}</span>
+                </span>
+                <span className="hidden shrink-0 text-xs text-gray-500 sm:block">{String(visitor.activity || 'Browsing').replaceAll('_', ' ')} · {dateFormat(visitor.last_activity)}</span>
+                <span className="shrink-0 text-[10px] text-gray-500">{activities.length} events</span>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+              </button>
+              {isExpanded && <div className="ml-[3.25rem] mr-2 mt-2 border-l border-gray-200 py-1 pl-4 dark:border-gray-700">
+                {activities.length ? <div className="space-y-3">{activities.map(item => <div key={item.id} className="flex items-start justify-between gap-3 text-xs">
+                  <div className="min-w-0"><p className="font-medium">{item.label}</p><p className="mt-0.5 truncate text-gray-500">{visitor.page || visitor.current_url || ''}</p></div>
+                  <time className="shrink-0 text-[10px] text-gray-400">{dateFormat(item.occurredAt)}</time>
+                </div>)}</div> : <p className="text-xs text-gray-500">No activity events received yet.</p>}
+              </div>}
+            </div>;
+          })}
+        </div> : <EmptyState message="No customers or visitors are active right now." />}
       </Card>
 
-      {lastRealtimeEvent && <p className="text-right text-[11px] text-gray-400">Last realtime event: <span className="font-semibold">{lastRealtimeEvent.event}</span> · {dateFormat(lastRealtimeEvent.receivedAt)}</p>}
+      <Card>
+        <SectionTitle icon={Users} title="Tracked visitors" subtitle="Customer and visitor profiles, including offline visitors" action={<div className="flex items-center gap-2 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Realtime enabled</div>} />
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input value={visitorSearchInput} onChange={event => setVisitorSearchInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { setVisitorPage(1); setVisitorSearch(visitorSearchInput); } }} placeholder="Search customer, fingerprint, IP, city, country..." className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-indigo-400 dark:border-gray-700 dark:bg-gray-900" /></div><button type="button" onClick={() => { setVisitorPage(1); setVisitorSearch(visitorSearchInput); }} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Search</button></div>
+        {visitorsLoading ? <div className="flex justify-center p-10"><RefreshCw className="h-5 w-5 animate-spin text-indigo-500" /></div> : visitors.length ? <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="border-b border-gray-100 text-[10px] uppercase tracking-wider text-gray-500 dark:border-gray-800"><tr><th className="pb-3">Profile</th><th className="pb-3">Location</th><th className="pb-3">Device</th><th className="pb-3">Last seen</th><th className="pb-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-gray-100 dark:divide-gray-800">{visitors.map(visitor => <TrackedVisitorRow key={visitor.id} visitor={visitor} onViewDetails={openVisitor} isOnline={liveVisitors.some(active => active.visitor_id === visitor.id)} />)}</tbody></table></div> : <EmptyState message="No visitors match this search." />}
+        <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4 text-xs dark:border-gray-800"><span className="text-gray-500">{numberFormat(visitorPagination.total_items)} total visitors</span><div className="flex items-center gap-2"><button type="button" disabled={!visitorPagination.has_previous} onClick={() => setVisitorPage(page => Math.max(1, page - 1))} className="rounded-lg border border-gray-200 p-1.5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700"><ChevronLeft className="h-4 w-4" /></button><span>Page {visitorPage} of {pageTotal}</span><button type="button" disabled={!visitorPagination.has_next} onClick={() => setVisitorPage(page => page + 1)} className="rounded-lg border border-gray-200 p-1.5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700"><ChevronRight className="h-4 w-4" /></button></div></div>
+      </Card>
 
       {selectedVisitor && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onMouseDown={event => { if (event.target === event.currentTarget) setSelectedVisitor(null); }}><div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-gray-900"><div className="mb-5 flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-500">Visitor profile</p><h2 className="mt-1 text-xl font-bold">{selectedVisitor.visitor?.visitor_code || selectedVisitor.visitor?.id}</h2><p className="mt-1 text-xs text-gray-500">{selectedVisitor.visitor?.fingerprint || 'No fingerprint'}</p></div><button type="button" onClick={() => setSelectedVisitor(null)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><X className="h-5 w-5" /></button></div>{detailsLoading ? <div className="flex justify-center p-10"><RefreshCw className="h-5 w-5 animate-spin" /></div> : <div className="grid gap-5 lg:grid-cols-2"><div><h3 className="mb-3 font-semibold">Sessions ({numberFormat(selectedVisitor.total_sessions)})</h3><div className="space-y-2">{(selectedVisitor.sessions || []).map(session => <div key={session.id} className="rounded-xl bg-gray-50 p-3 text-xs dark:bg-gray-800/60"><div className="flex justify-between gap-3"><span className="font-semibold">{session.landing_page || 'Unknown landing page'}</span><span className="text-gray-500">{durationFormat(session.duration_seconds)}</span></div><p className="mt-1 text-gray-500">{numberFormat(session.page_views)} page views · {dateFormat(session.started_at)}</p><p className="mt-1 text-gray-500">{session.utm_source || session.utm_medium || session.utm_campaign ? [session.utm_source, session.utm_medium, session.utm_campaign].filter(Boolean).join(' / ') : 'No campaign data'}</p></div>)}{!selectedVisitor.sessions?.length && <EmptyState message="No sessions recorded." />}</div></div><div><h3 className="mb-3 font-semibold">Recent events ({numberFormat(selectedVisitor.total_events)})</h3><div className="space-y-2">{(selectedVisitor.recent_events || []).map(event => <div key={event.id} className="flex gap-3 rounded-xl bg-gray-50 p-3 text-xs dark:bg-gray-800/60"><Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-indigo-500" /><div><p className="font-semibold">{event.event_name}</p><p className="mt-1 text-gray-500">{event.page || 'Unknown page'} · {dateFormat(event.created_at)}</p></div></div>)}{!selectedVisitor.recent_events?.length && <EmptyState message="No events recorded." />}</div></div></div>}</div></div>}
     </div>

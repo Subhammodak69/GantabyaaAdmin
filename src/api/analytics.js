@@ -16,6 +16,12 @@ export async function fetchAnalyticsOverview() {
   return payload.data || {};
 }
 
+export async function fetchLiveStats() {
+  const response = await apiCall(`${ANALYTICS_BASE}/live`, 'GET');
+  const payload = await readResponse(response, 'Unable to load live visitor activity.');
+  return payload.data || { active_visitors: [] };
+}
+
 export async function fetchVisitors({ search = '', page = 1, pageSize = 20 } = {}) {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
   if (search.trim()) params.set('search', search.trim());
