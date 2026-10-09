@@ -7,9 +7,10 @@ import MediaViewerModal from '../component/common/MediaViewerModal';
 import DragDropUpload from '../component/common/DragDropUpload';
 import SelectField from '../component/common/SelectField';
 import Pagination from '../component/common/PaginationComponent';
-import ActionMenu from '../component/common/ActionMenu';
+import DocumentListItem from '../component/common/DocumentListItem';
+import PrivateDocumentPreview from '../component/common/PrivateDocumentPreview';
 import { apiCall, handleApiError } from '../utils/apiCall';
-import usePrivateDocumentFile, { downloadPrivateDocument } from '../hooks/usePrivateDocumentFile';
+import { downloadPrivateDocument } from '../hooks/usePrivateDocumentFile';
 
 const documentTypes = {
   identity: ['ID_PROOF', 'ADDRESS_PROOF'],
@@ -68,76 +69,11 @@ const formatDate = (value) => {
   }
 };
 
-const getFileType = (url = '', fileName = '') => {
-  const lower = (url + fileName).toLowerCase();
-  if (lower.includes('.pdf')) return 'pdf';
-  if (lower.match(/\.(mp4|mov|webm|ogg)/) || lower.includes('video/upload') || lower.includes('video')) return 'video';
-  if (lower.match(/\.(jpg|jpeg|png|gif|bmp|webp|svg|tiff|avif)/)) return 'image';
-  return 'image';
-};
-
 const buildCustomerLabel = (customer) => {
   if (!customer) return '';
   const parts = [customer.name].filter(Boolean);
   if (customer.mobile) parts.push(customer.mobile);
   return parts.join(' • ') || customer.customer_code || customer.id;
-};
-
-const DocumentPreviewContent = ({ doc }) => {
-  const { fileUrl, mimeType, loading, error } = usePrivateDocumentFile(doc);
-  if (!doc) return null;
-  const fileType = mimeType.startsWith('image/')
-    ? 'image'
-    : mimeType.includes('pdf')
-      ? 'pdf'
-      : mimeType.startsWith('video/')
-        ? 'video'
-        : getFileType(doc.file_url || '', doc.file_name || '');
-  return (
-    <div
-      style={{ background: '#000' }}
-      className="flex min-h-full w-full flex-col"
-    >
-      {/* dark title strip */}
-      <div
-        style={{ background: 'rgba(0,0,0,0.7)' }}
-        className="flex shrink-0 items-center justify-center px-12 py-2"
-      >
-        <span className="max-w-md truncate text-center text-xs font-medium text-slate-400">
-          {doc.title || doc.file_name || 'Document preview'}
-        </span>
-      </div>
-
-      {/* media area */}
-      <div className="flex flex-1 items-center justify-center p-3">
-        {loading ? (
-          <p className="text-sm text-slate-300">Loading document...</p>
-        ) : error ? (
-          <p className="text-sm text-red-300">{error}</p>
-        ) : !fileUrl ? null : fileType === 'pdf' ? (
-          <iframe
-            src={fileUrl}
-            title={doc.title || 'PDF preview'}
-            style={{ border: 'none', background: '#fff' }}
-            className="h-[80vh] w-full max-w-5xl rounded-xl"
-          />
-        ) : fileType === 'video' ? (
-          <video
-            src={fileUrl}
-            controls
-            autoPlay
-            className="max-h-[80vh] max-w-full rounded-xl object-contain shadow-xl"
-          />
-        ) : (
-          <img
-            src={fileUrl}
-            alt={doc.title || doc.file_name || 'Document'}
-            className="max-h-[80vh] w-auto max-w-full rounded-xl object-contain shadow-xl"
-          />
-        )}
-      </div>
-    </div>
-  );
 };
 
 const DocumentManagement = () => {
@@ -742,100 +678,52 @@ const DocumentManagement = () => {
               <span className="sr-only">Actions</span>
             </div>
             {documents.map((doc) => (
-              <article
+              <DocumentListItem
                 key={doc.id}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-4 rounded-2xl border border-gray-200 bg-white p-4 transition-colors hover:border-emerald-300 hover:bg-emerald-50/30 dark:border-gray-700 dark:bg-gray-800/60 dark:hover:border-emerald-800 dark:hover:bg-emerald-900/10 lg:grid-cols-[minmax(0,2fr)_minmax(140px,1fr)_minmax(140px,1fr)_minmax(130px,0.9fr)_minmax(130px,0.9fr)_auto]"
-              >
-                <div className="flex min-w-0 items-center gap-3 lg:col-start-1 lg:row-start-1">
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${doc.title || 'document'}`}
-                    checked={selectedIds.has(doc.id)}
-                    onChange={() => toggleSelectOne(doc.id)}
-                    disabled={!doc.is_active}
-                    className="h-4 w-4 shrink-0 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <button
-                      type="button"
-                      onClick={() => doc.is_active && setPreviewDoc(doc)}
-                      disabled={!doc.is_active}
-                      className="block max-w-full truncate text-left font-semibold text-gray-900 hover:text-emerald-700 disabled:cursor-default dark:text-gray-100 dark:hover:text-emerald-300"
-                    >
-                      {doc.title || doc.file_name || 'Untitled document'}
-                    </button>
-                    <div className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
-                      {doc.description || (documentScope === 'booking' ? doc.booking_code || 'Booking document' : 'Identity document')}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="col-span-2 min-w-0 lg:col-span-1 lg:col-start-2 lg:row-start-1">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 lg:hidden">Customer</div>
-                  <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">
-                    {doc.customer_name || doc.customer_id || 'N/A'}
-                  </div>
-                  {documentScope === 'booking' && (
-                    <div className="truncate text-xs text-gray-500 dark:text-gray-400">{doc.booking_code || doc.booking_id || 'Booking'}</div>
-                  )}
-                </div>
-
-                <div className="col-span-2 min-w-0 lg:col-span-1 lg:col-start-3 lg:row-start-1">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 lg:hidden">Uploaded by</div>
-                  <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{doc.uploader_name || 'N/A'}</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    {doc.type === 'incoming' ? 'Customer upload' : 'Admin upload'}
-                  </div>
-                </div>
-
-                <div className="lg:col-start-4 lg:row-start-1">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 lg:hidden">Type</div>
-                  <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-                    {(doc.document_type || 'N/A').replaceAll('_', ' ')}
-                  </span>
-                </div>
-
-                <div className="lg:col-start-5 lg:row-start-1">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 lg:hidden">Uploaded date</div>
-                  <div className="text-sm text-gray-600 dark:text-gray-300">{formatDate(doc.uploaded_at)}</div>
-                </div>
-
-                <div className="col-start-2 row-start-1 lg:col-start-6 lg:row-start-1" onClick={(event) => event.stopPropagation()}>
-                  <ActionMenu
-                    menuId={doc.id}
-                    actions={[
-                      {
-                        label: 'Preview Document',
-                        icon: <Eye className="h-4 w-4 text-emerald-500" />,
-                        onClick: () => doc.is_active && setPreviewDoc(doc),
-                        disabled: !doc.is_active,
-                      },
-                      {
-                        label: 'Download Document',
-                        icon: <Download className="h-4 w-4 text-sky-500" />,
-                        onClick: () => handleDownload(doc),
-                        disabled: !doc.is_active,
-                      },
-                      {
-                        label: 'Edit Document',
-                        icon: <Pencil className="h-4 w-4 text-indigo-500" />,
-                        onClick: () => openEditModal(doc),
-                        disabled: !doc.is_active,
-                      },
-                      {
-                        label: 'Delete Document',
-                        icon: <Trash2 className="h-4 w-4 text-red-500" />,
-                        className: 'text-red-600 hover:text-red-700 dark:text-red-400',
-                        onClick: () => handleDelete(doc),
-                        disabled: !doc.is_active,
-                      },
-                    ]}
-                  />
-                </div>
-              </article>
+                document={doc}
+                subtitle={doc.description || (documentScope === 'booking' ? doc.booking_code || 'Booking document' : 'Identity document')}
+                onPreview={setPreviewDoc}
+                selected={selectedIds.has(doc.id)}
+                onSelect={toggleSelectOne}
+                details={[
+                  {
+                    label: documentScope === 'booking' ? 'Booking / customer' : 'Customer',
+                    value: documentScope === 'booking'
+                      ? `${doc.booking_code || 'Booking'} · ${doc.customer_name || doc.customer_id || 'N/A'}`
+                      : doc.customer_name || doc.customer_id || 'N/A',
+                  },
+                  { label: 'Uploaded by', value: doc.uploader_name || 'N/A' },
+                  { label: 'Type', value: (doc.document_type || 'N/A').replaceAll('_', ' '), badge: true },
+                  { label: 'Uploaded date', value: formatDate(doc.uploaded_at) },
+                ]}
+                actions={[
+                  {
+                    label: 'Preview Document',
+                    icon: <Eye className="h-4 w-4 text-emerald-500" />,
+                    onClick: () => doc.is_active && setPreviewDoc(doc),
+                    disabled: !doc.is_active,
+                  },
+                  {
+                    label: 'Download Document',
+                    icon: <Download className="h-4 w-4 text-sky-500" />,
+                    onClick: () => handleDownload(doc),
+                    disabled: !doc.is_active,
+                  },
+                  {
+                    label: 'Edit Document',
+                    icon: <Pencil className="h-4 w-4 text-indigo-500" />,
+                    onClick: () => openEditModal(doc),
+                    disabled: !doc.is_active,
+                  },
+                  {
+                    label: 'Delete Document',
+                    icon: <Trash2 className="h-4 w-4 text-red-500" />,
+                    className: 'text-red-600 hover:text-red-700 dark:text-red-400',
+                    onClick: () => handleDelete(doc),
+                    disabled: !doc.is_active,
+                  },
+                ]}
+              />
             ))}
           </div>
         )}
@@ -855,7 +743,7 @@ const DocumentManagement = () => {
 
       {/* Document file preview modal — image / video / PDF */}
       <MediaViewerModal isOpen={!!previewDoc} onClose={() => setPreviewDoc(null)}>
-        <DocumentPreviewContent doc={previewDoc} />
+        {previewDoc && <PrivateDocumentPreview document={previewDoc} />}
       </MediaViewerModal>
 
       <Modal

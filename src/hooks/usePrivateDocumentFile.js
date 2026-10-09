@@ -4,12 +4,31 @@ import { apiCall } from '../utils/apiCall';
 
 const getDocumentUrl = (document) => `/api/v1/admin/documents/${document.id}/download`;
 
-export const fetchPrivateDocumentBlob = async (document) => {
+const fetchPrivateDocumentResponse = async (document) => {
   const response = await apiCall(getDocumentUrl(document), 'GET');
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
     throw new Error(payload?.message || payload?.detail || 'Unable to download document');
   }
+  return response;
+};
+
+const getDownloadFilename = (contentDisposition) => {
+  const encodedName = contentDisposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const quotedName = contentDisposition?.match(/filename="([^"]+)"/i)?.[1];
+  let rawName = quotedName;
+  if (encodedName) {
+    try {
+      rawName = decodeURIComponent(encodedName);
+    } catch {
+      rawName = quotedName;
+    }
+  }
+  return rawName?.split(/[\\/]/).pop();
+};
+
+export const fetchPrivateDocumentBlob = async (document) => {
+  const response = await fetchPrivateDocumentResponse(document);
   return response.blob();
 };
 
@@ -17,11 +36,15 @@ export const downloadPrivateDocument = async (document) => {
   const toastId = toast.loading('Downloading document...');
   let objectUrl = '';
   try {
-    const blob = await fetchPrivateDocumentBlob(document);
+    const response = await fetchPrivateDocumentResponse(document);
+    const blob = await response.blob();
     objectUrl = URL.createObjectURL(blob);
     const link = window.document.createElement('a');
     link.href = objectUrl;
-    link.download = document.file_name || document.title || 'document';
+    link.download = getDownloadFilename(response.headers.get('content-disposition'))
+      || document.file_name
+      || document.title
+      || 'document';
     window.document.body.appendChild(link);
     link.click();
     link.remove();

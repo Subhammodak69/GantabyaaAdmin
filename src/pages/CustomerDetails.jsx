@@ -31,10 +31,12 @@ import MediaPreviewModal from '../component/common/MediaPreviewModal';
 import MediaViewerModal from '../component/common/MediaViewerModal';
 import SelectField from '../component/common/SelectField';
 import ActionMenu from '../component/common/ActionMenu';
+import DocumentListItem from '../component/common/DocumentListItem';
+import PrivateDocumentPreview from '../component/common/PrivateDocumentPreview';
 import Pagination from '../component/common/PaginationComponent';
 import { apiCall, handleApiError } from '../utils/apiCall';
 import { useEnums } from '../context/EnumsContext';
-import usePrivateDocumentFile, { downloadPrivateDocument } from '../hooks/usePrivateDocumentFile';
+import { downloadPrivateDocument } from '../hooks/usePrivateDocumentFile';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -108,13 +110,6 @@ const formatShortDate = (value) => {
   }
 };
 
-const formatFileSize = (bytes) => {
-  if (!bytes || Number.isNaN(bytes)) return 'N/A';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
-
 const getInitials = (name = '') =>
   name
     .split(' ')
@@ -164,49 +159,6 @@ const getInvoiceStatusClass = (status = '') => {
   if (normalized.includes('CANCEL')) return 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300';
   if (normalized.includes('PARTIAL') || normalized.includes('PENDING') || normalized.includes('DUE')) return 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
   return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
-};
-
-const getFileType = (url = '', fileName = '') => {
-  const lower = (url + fileName).toLowerCase();
-  if (lower.includes('.pdf')) return 'pdf';
-  if (lower.match(/\.(mp4|mov|webm|ogg)/) || lower.includes('video/upload') || lower.includes('video')) return 'video';
-  if (lower.match(/\.(jpg|jpeg|png|gif|bmp|webp|svg|tiff|avif)/)) return 'image';
-  return 'image';
-};
-
-const CustomerDocumentPreviewContent = ({ doc }) => {
-  const { fileUrl, mimeType, loading, error } = usePrivateDocumentFile(doc);
-  const fileType = mimeType.includes('pdf') ? 'pdf' : mimeType.startsWith('video/') ? 'video' : getFileType(doc.file_url || '', doc.file_name || '');
-
-  return (
-    <div style={{ background: '#000' }} className="flex min-h-full w-full flex-col">
-      <div
-        style={{ background: 'rgba(0,0,0,0.7)' }}
-        className="flex shrink-0 items-center justify-between border-b border-white/10 px-6 py-3"
-      >
-        <div className="min-w-0 pr-4">
-          <p className="truncate text-sm font-semibold text-white">{doc.title || doc.file_name || 'Document preview'}</p>
-          {doc.description && <p className="truncate text-xs text-slate-400">{doc.description}</p>}
-        </div>
-        <span className="shrink-0 text-xs text-slate-400">
-          {doc.document_type} · {formatFileSize(doc.file_size)}
-        </span>
-      </div>
-      <div className="flex flex-1 items-center justify-center p-3">
-        {loading ? (
-          <p className="text-sm text-slate-300">Loading document...</p>
-        ) : error ? (
-          <p className="text-sm text-red-300">{error}</p>
-        ) : !fileUrl ? null : fileType === 'pdf' ? (
-          <iframe src={fileUrl} title={doc.title || 'PDF preview'} style={{ border: 'none', background: '#fff' }} className="h-[80vh] w-full max-w-5xl rounded-xl" />
-        ) : fileType === 'video' ? (
-          <video src={fileUrl} controls autoPlay className="max-h-[80vh] max-w-full rounded-xl object-contain shadow-xl" />
-        ) : (
-          <img src={fileUrl} alt={doc.title || doc.file_name || 'Document'} className="max-h-[80vh] w-auto max-w-full rounded-xl object-contain shadow-xl" />
-        )}
-      </div>
-    </div>
-  );
 };
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -762,83 +714,32 @@ const CustomerDetails = () => {
                   No documents uploaded for this customer yet.
                 </p>
               ) : (
-                <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
-                  <ManagementTable><table className="min-w-full divide-y divide-gray-200 text-left text-sm dark:divide-gray-800">
-                    <thead className="bg-gray-50 dark:bg-gray-800/70">
-                      <tr>
-                        <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Document</th>
-                        <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Type</th>
-                        <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Uploaded By</th>
-                        <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Uploaded Date</th>
-                        <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Size</th>
-                        <th className="px-4 py-3 text-right font-semibold text-gray-700 dark:text-gray-200">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                      {tabData.documents.map((doc) => (
-                        <tr
-                          key={doc.id || doc.file_url}
-                          onClick={() => setPreviewDoc(doc)}
-                          className="cursor-pointer transition-colors hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10"
-                        >
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">
-                                <FileText className="h-4 w-4" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="font-semibold text-gray-900 dark:text-white truncate">
-                                  {doc.title || doc.file_name || 'Untitled document'}
-                                </p>
-                                <p className="text-xs text-gray-400 truncate">{doc.file_name || doc.description || doc.document_type?.replace(/_/g, ' ') || 'Document'}</p>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="px-4 py-3.5">
-                            <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-                              {doc.document_type || 'ID_PROOF'}
-                            </span>
-                          </td>
-
-                          <td className="px-4 py-3.5">
-                            <div className="text-xs">
-                              <p className="font-medium text-gray-800 dark:text-gray-200">{doc.uploader_name || doc.customer_name || 'Customer'}</p>
-                              <p className="text-gray-400">{doc.type === 'outgoing' ? 'Customer' : 'Admin'}</p>
-                            </div>
-                          </td>
-
-                          <td className="px-4 py-3.5 text-xs text-gray-500 dark:text-gray-400">
-                            {formatDate(doc.uploaded_at || doc.created_at)}
-                          </td>
-
-                          <td className="px-4 py-3.5 text-xs text-gray-500 dark:text-gray-400">
-                            {formatFileSize(doc.file_size)}
-                          </td>
-
-                          <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-end">
-                              <ActionMenu
-                                menuId={`doc-${doc.id || doc.file_url}`}
-                                actions={[
-                                  {
-                                    label: 'Preview Document',
-                                    icon: <Eye className="h-4 w-4 text-indigo-500" />,
-                                    onClick: () => setPreviewDoc(doc),
-                                  },
-                                  {
-                                    label: 'Download Document',
-                                    icon: <Download className="h-4 w-4 text-sky-500" />,
-                                    onClick: () => handleDocumentDownload(doc),
-                                  },
-                                ]}
-                              />
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table></ManagementTable>
+                <div className="space-y-3">
+                  {tabData.documents.map((doc) => (
+                    <DocumentListItem
+                      key={doc.id}
+                      document={doc}
+                      subtitle={doc.description || 'Customer document'}
+                      onPreview={setPreviewDoc}
+                      details={[
+                        { label: 'Uploaded by', value: doc.uploader_name || doc.customer_name || 'Customer' },
+                        { label: 'Type', value: (doc.document_type || 'ID_PROOF').replaceAll('_', ' '), badge: true },
+                        { label: 'Uploaded date', value: formatDate(doc.uploaded_at || doc.created_at) },
+                      ]}
+                      actions={[
+                        {
+                          label: 'Preview Document',
+                          icon: <Eye className="h-4 w-4 text-indigo-500" />,
+                          onClick: () => setPreviewDoc(doc),
+                        },
+                        {
+                          label: 'Download Document',
+                          icon: <Download className="h-4 w-4 text-sky-500" />,
+                          onClick: () => handleDocumentDownload(doc),
+                        },
+                      ]}
+                    />
+                  ))}
                 </div>
               )}
             </div>
@@ -1439,7 +1340,7 @@ const CustomerDetails = () => {
 
       {/* ── Document Preview Modal (MediaViewerModal) ── */}
       <MediaViewerModal isOpen={!!previewDoc} onClose={() => setPreviewDoc(null)}>
-        {previewDoc && <CustomerDocumentPreviewContent doc={previewDoc} />}
+        {previewDoc && <PrivateDocumentPreview document={previewDoc} />}
       </MediaViewerModal>
 
       {/* ── Enquiry Details Modal ── */}

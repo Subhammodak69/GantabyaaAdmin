@@ -7,9 +7,11 @@ import ConfirmDeleteModal from '../component/common/ConfirmDeleteModal';
 import CustomDatePicker from '../component/common/CustomDatePicker';
 import DragDropUpload from '../component/common/DragDropUpload';
 import MediaViewerModal from '../component/common/MediaViewerModal';
+import DocumentListItem from '../component/common/DocumentListItem';
+import PrivateDocumentPreview from '../component/common/PrivateDocumentPreview';
 import SelectField from '../component/common/SelectField';
 import { apiCall, handleApiError } from '../utils/apiCall';
-import usePrivateDocumentFile, { downloadPrivateDocument } from '../hooks/usePrivateDocumentFile';
+import { downloadPrivateDocument } from '../hooks/usePrivateDocumentFile';
 
 const inputClass = 'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/15 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200';
 const emptyTraveller = { full_name: '', traveler_type: 'ADULT', gender: '', date_of_birth: '', mobile: '', email: '', relationship_to_customer: '', is_primary: false };
@@ -37,21 +39,6 @@ const BookingField = ({ label, value }) => (
     </dd>
   </div>
 );
-
-const BookingDocumentPreview = ({ document }) => {
-  const { fileUrl, mimeType, loading, error } = usePrivateDocumentFile(document);
-  const isPdf = mimeType.includes('pdf') || document?.mime_type === 'application/pdf' || document?.file_name?.toLowerCase().endsWith('.pdf');
-  const isVideo = mimeType.startsWith('video/');
-  return (
-    <div className="flex min-h-[60vh] items-center justify-center bg-black p-4">
-      {loading ? <p className="text-sm text-white">Loading document...</p>
-        : error ? <p className="text-sm text-red-300">{error}</p>
-          : isPdf ? <iframe title={document?.title || 'Booking document'} src={fileUrl} className="h-[75vh] w-full rounded-xl bg-white" />
-            : isVideo ? <video src={fileUrl} controls className="max-h-[75vh] max-w-full rounded-xl" />
-            : <img src={fileUrl} alt={document?.title || 'Booking document'} className="max-h-[75vh] max-w-full rounded-xl object-contain" />}
-    </div>
-  );
-};
 
 const BookingDetails = () => {
   const navigate = useNavigate();
@@ -306,13 +293,43 @@ const BookingDetails = () => {
       ) : (
         <div id="booking-documents-panel" role="tabpanel" aria-label="Booking documents" className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Booking documents</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Upload and view tickets, vouchers, and other booking files.</p></div><button type="button" onClick={() => setIsDocumentUploadOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-700"><Plus className="h-4 w-4" /> Upload document</button></div>
-          {documentsLoading ? <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading booking documents...</p> : documents.length === 0 ? <p className="rounded-xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">No documents uploaded for this booking yet.</p> : <div className="divide-y divide-gray-100 dark:divide-gray-700">{documents.map((document) => (
-            <div key={document.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div className="flex min-w-0 items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"><FileText className="h-4 w-4" /></span><div className="min-w-0"><p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{document.title || document.file_name || 'Booking document'}</p><p className="text-xs text-gray-500 dark:text-gray-400">{document.document_type?.replace(/_/g, ' ') || 'Document'} - {document.uploaded_at ? formatBookingDate(document.uploaded_at) : 'Date unavailable'}</p></div></div><div className="flex items-center gap-2"><button type="button" onClick={() => setPreviewDocument(document)} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"><Eye className="h-3.5 w-3.5" /> View</button><button type="button" onClick={() => downloadBookingDocument(document)} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"><Download className="h-3.5 w-3.5" /> Download</button></div></div>
-          ))}</div>}
+          {documentsLoading ? (
+            <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading booking documents...</p>
+          ) : documents.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">No documents uploaded for this booking yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {documents.map((document) => (
+                <DocumentListItem
+                  key={document.id}
+                  document={document}
+                  subtitle={document.description || 'Booking document'}
+                  onPreview={setPreviewDocument}
+                  details={[
+                    { label: 'Uploaded by', value: document.uploader_name || 'N/A' },
+                    { label: 'Type', value: (document.document_type || 'Document').replaceAll('_', ' '), badge: true },
+                    { label: 'Uploaded date', value: document.uploaded_at ? formatBookingDate(document.uploaded_at) : 'Date unavailable' },
+                  ]}
+                  actions={[
+                    {
+                      label: 'Preview Document',
+                      icon: <Eye className="h-4 w-4 text-emerald-500" />,
+                      onClick: () => setPreviewDocument(document),
+                    },
+                    {
+                      label: 'Download Document',
+                      icon: <Download className="h-4 w-4 text-sky-500" />,
+                      onClick: () => downloadBookingDocument(document),
+                    },
+                  ]}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     <MediaViewerModal isOpen={!!previewDocument} onClose={() => setPreviewDocument(null)}>
-      {previewDocument && <BookingDocumentPreview document={previewDocument} />}
+      {previewDocument && <PrivateDocumentPreview document={previewDocument} />}
     </MediaViewerModal>
     <Modal isOpen={isDocumentUploadOpen} onClose={() => setIsDocumentUploadOpen(false)} title="Upload booking document" icon={FileText} size="lg" footer={<div className="flex justify-end gap-2"><button type="button" onClick={() => setIsDocumentUploadOpen(false)} className="rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:border-gray-600 dark:text-gray-200">Cancel</button><button type="submit" form="booking-document-form" disabled={documentSaving} className="rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{documentSaving ? 'Uploading...' : 'Upload document'}</button></div>}>
       <form id="booking-document-form" onSubmit={uploadBookingDocument} className="space-y-4">
