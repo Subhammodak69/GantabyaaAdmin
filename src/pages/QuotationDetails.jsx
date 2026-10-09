@@ -20,7 +20,7 @@ import SelectField from '../component/common/SelectField';
 import { apiCall, handleApiError } from '../utils/apiCall';
 import { useEnums } from '../context/EnumsContext';
 
-const inputClass = 'w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-cyan-500 focus:bg-white focus:ring-4 focus:ring-cyan-500/10 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-200 dark:focus:bg-gray-800';
+const inputClass = 'w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-cyan-500 focus:bg-white focus:ring-4 focus:ring-cyan-500/10 read-only:cursor-not-allowed dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-200 dark:focus:bg-gray-800';
 const pricingFields = ['subtotal', 'discount_amount', 'tax_amount', 'total_amount'];
 const noteFields = ['terms_and_conditions', 'important_notes', 'inclusion', 'exclusion'];
 const versionSteps = ['Trip details', 'Components', 'Pricing & notes'];
@@ -230,7 +230,7 @@ const QuotationDetails = () => {
     try {
       const response = await apiCall(`/api/v1/admin/tour-packages/${encodeURIComponent(packageId)}/variants?page=1&page_size=100`, 'GET');
       const payload = await response.json().catch(() => ({}));
-      setVariantOptions(response.ok ? (payload?.data || []).map((item) => ({ value: item.id, label: `${item.name || 'Unnamed variant'}${item.season_name ? ` - ${item.season_name}` : ''}` })) : []);
+      setVariantOptions(response.ok ? (payload?.data || []).map((item) => ({ value: item.id, label: `${item.name || 'Unnamed variant'}${item.season_name ? ` - ${item.season_name}` : ''}`, raw: item })) : []);
     } catch { setVariantOptions([]); } finally { setVariantsLoading(false); }
   }, []);
 
@@ -308,11 +308,7 @@ const QuotationDetails = () => {
       if (key === 'quantity' || key === 'unit_price') nextItem.total_price = (Number(nextItem.quantity || 0) * Number(nextItem.unit_price || 0)).toFixed(2);
       return nextItem;
     });
-    if (field !== 'items') return { ...current, [field]: nextItems };
-    const subtotal = nextItems.reduce((sum, item) => sum + Number(item.total_price || (Number(item.quantity || 0) * Number(item.unit_price || 0))), 0);
-    const discount = Number(current.discount_amount || 0);
-    const tax = Number(current.tax_amount || 0);
-    return { ...current, [field]: nextItems, subtotal: subtotal.toFixed(2), total_amount: Math.max(0, subtotal - discount + tax).toFixed(2) };
+    return { ...current, [field]: nextItems };
   });
   const addNested = (field) => {
     const templates = {
@@ -325,15 +321,9 @@ const QuotationDetails = () => {
   };
   const removeNested = (field, index) => setEditForm((current) => {
     const nextItems = current[field].filter((_, itemIndex) => itemIndex !== index);
-    if (field !== 'items') return { ...current, [field]: nextItems };
-    const subtotal = nextItems.reduce((sum, item) => sum + Number(item.total_price || (Number(item.quantity || 0) * Number(item.unit_price || 0))), 0);
-    return { ...current, [field]: nextItems, subtotal: subtotal.toFixed(2), total_amount: Math.max(0, subtotal - Number(current.discount_amount || 0) + Number(current.tax_amount || 0)).toFixed(2) };
+    return { ...current, [field]: nextItems };
   });
-  const updatePricing = (field, value) => setEditForm((current) => {
-    const next = { ...current, [field]: value };
-    if (field !== 'subtotal') next.total_amount = Math.max(0, Number(next.subtotal || 0) - Number(next.discount_amount || 0) + Number(next.tax_amount || 0)).toFixed(2);
-    return next;
-  });
+  const updatePricing = (field, value) => setEditForm((current) => ({ ...current, [field]: value }));
 
   const saveEdit = async (event) => {
     event.preventDefault();
@@ -456,7 +446,7 @@ const QuotationDetails = () => {
   const renderVersionStep = () => {
     if (versionStep === 0) return renderReferenceStep();
     if (versionStep === 1) return <div className="space-y-5">{renderNestedEditor('items', 'Quotation items')}{renderReferenceNestedEditor('hotels', 'Hotels')}{renderReferenceNestedEditor('vehicles', 'Vehicles')}{renderNestedEditor('itinerary', 'Itinerary')}{itineraryLoading && <p className="text-xs text-gray-500">Loading package itinerary...</p>}</div>;
-    return <div className="space-y-6"><div className="grid gap-5 md:grid-cols-2">{pricingFields.map((field) => <div key={field}><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">{prettyLabel(field)}</label><input type="text" inputMode="decimal" readOnly={field === 'subtotal' || field === 'total_amount'} value={editForm[field] ?? '0'} onChange={(event) => updatePricing(field, numericValue(event.target.value))} className={`${inputClass} ${field === 'total_amount' ? 'border-cyan-200 bg-cyan-50 font-bold text-cyan-800 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-200' : field === 'subtotal' ? 'bg-slate-100 font-semibold dark:bg-gray-800' : ''}`} /></div>)}</div><div className="grid gap-5 md:grid-cols-2">{noteFields.map((field) => <div key={field}><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">{prettyLabel(field)}</label><textarea value={editForm[field] ?? ''} onChange={(event) => updateEdit(field, event.target.value)} className={`${inputClass} min-h-[120px] resize-y`} /></div>)}</div></div>;
+    return <div className="space-y-6"><div className="grid gap-5 md:grid-cols-2">{pricingFields.map((field) => <div key={field}><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">{prettyLabel(field)}</label><input type="text" inputMode="decimal" value={editForm[field] ?? '0'} onChange={(event) => updatePricing(field, numericValue(event.target.value))} className={inputClass} /></div>)}</div><div className="grid gap-5 md:grid-cols-2">{noteFields.map((field) => <div key={field}><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">{prettyLabel(field)}</label><textarea value={editForm[field] ?? ''} onChange={(event) => updateEdit(field, event.target.value)} className={`${inputClass} min-h-[120px]`} /></div>)}</div></div>;
   };
 
   if (loading && !quotation) return <div className="flex min-h-[360px] items-center justify-center text-sm text-gray-500">Loading quotation...</div>;

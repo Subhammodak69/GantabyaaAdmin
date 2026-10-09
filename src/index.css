@@ -2,6 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  /* Keep the unselected trip-mode option readable in dark modal themes. */
+  label:has(> input[name='version-trip-type']),
+  label:has(> input[name='quotation-trip-type']) {
+    color: rgb(51 65 85);
+  }
+
+  .dark label:has(> input[name='version-trip-type']),
+  .dark label:has(> input[name='quotation-trip-type']) {
+    color: rgb(229 231 235);
+  }
+
+  label:has(> input[name='version-trip-type']:checked),
+  label:has(> input[name='quotation-trip-type']:checked) {
+    color: rgb(14 116 144);
+  }
+}
+
 @layer base {
   * {
     box-sizing: border-box;

@@ -25,7 +25,7 @@ import ActionMenu from '../component/common/ActionMenu';
 import { apiCall, handleApiError } from '../utils/apiCall';
 import { useEnums } from '../context/EnumsContext';
 
-const inputClass = 'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/15 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200';
+const inputClass = 'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/15 read-only:cursor-not-allowed dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200';
 const emptyLineItem = { item_type: 'other', name: '', description: '', quantity: 1, unit_price: '0', total_price: '0' };
 const emptyHotel = { hotel_id: '', hotel_name: '', check_in: '', check_out: '', nights: 1, room_count: 1, room_type: 'SINGLE' };
 const emptyVehicle = { vehicle_id: '', vehicle_name: '', vehicle_type: 'ANY', start_date: '', end_date: '', rental_minutes: 1, quantity: 1 };
@@ -379,13 +379,7 @@ const QuotationManagement = () => {
     }
   }, [tripSelectionType, form.package_id, form.variant_id, form.travel_date, form.return_date]);
 
-  const updateForm = (field, value) => setForm((current) => {
-    const next = { ...current, [field]: value };
-    if (field === 'discount_amount' || field === 'tax_amount') {
-      next.total_amount = Math.max(0, Number(next.subtotal || 0) - Number(next.discount_amount || 0) + Number(next.tax_amount || 0)).toFixed(2);
-    }
-    return next;
-  });
+  const updateForm = (field, value) => setForm((current) => ({ ...current, [field]: value }));
   const updateArrayItem = (field, index, key, value) => setForm((current) => {
     const nextRows = current[field].map((item, itemIndex) => {
       if (itemIndex !== index) return item;
@@ -395,14 +389,7 @@ const QuotationManagement = () => {
       }
       return nextItem;
     });
-    if (field !== 'items') return { ...current, [field]: nextRows };
-    const subtotal = nextRows.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
-    return {
-      ...current,
-      [field]: nextRows,
-      subtotal: subtotal.toFixed(2),
-      total_amount: Math.max(0, subtotal - Number(current.discount_amount || 0) + Number(current.tax_amount || 0)).toFixed(2),
-    };
+    return { ...current, [field]: nextRows };
   });
   const addArrayItem = (field, template) => setForm((current) => ({ ...current, [field]: [...current[field], { ...template }] }));
   const removeArrayItem = (field, index) => setForm((current) => ({ ...current, [field]: current[field].filter((_, itemIndex) => itemIndex !== index) }));
@@ -531,7 +518,6 @@ const QuotationManagement = () => {
     const variantDateLocked = tripSelectionType === 'PACKAGE'
       && Boolean(form.variant_id)
       && ['travel_date', 'return_date'].includes(field);
-    const pricingLocked = ['subtotal', 'total_amount'].includes(field);
     return (
       <div>
         <label className={labelClass}>{label}</label>
@@ -539,7 +525,7 @@ const QuotationManagement = () => {
           ? <input type="text" readOnly value={form[field] ? formatDate(form[field]) : 'No date configured for this variant'} className={`${inputClass} cursor-not-allowed opacity-70`} />
           : type === 'datetime-local'
             ? <CustomDatePicker value={form[field]} onChange={(value) => updateForm(field, value)} />
-            : <input type="text" inputMode={type === 'number' ? 'decimal' : undefined} readOnly={pricingLocked} value={form[field]} onChange={(event) => updateForm(field, type === 'number' ? numericValue(event.target.value) : event.target.value)} className={`${inputClass} ${pricingLocked ? 'cursor-not-allowed bg-slate-100 font-semibold dark:bg-gray-800' : ''}`} />}
+            : <input type="text" inputMode={type === 'number' ? 'decimal' : undefined} value={form[field]} onChange={(event) => updateForm(field, type === 'number' ? numericValue(event.target.value) : event.target.value)} className={inputClass} />}
       </div>
     );
   };
