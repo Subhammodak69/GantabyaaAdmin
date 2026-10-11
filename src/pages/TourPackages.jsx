@@ -81,7 +81,11 @@ const TourPackages = () => {
       const payload = await response.json().catch(() => ({}));
       if (response.ok) {
         const data = Array.isArray(payload?.data) ? payload.data : [];
-        setDestinations(data.map((d) => ({ value: d.id, label: d.name })));
+        setDestinations(data.map((d) => ({
+          value: d.id,
+          label: d.name,
+          is_domestic: d.is_domestic !== false,
+        })));
       }
     } catch {
       // silently ignore destination fetch errors
@@ -147,7 +151,21 @@ const TourPackages = () => {
   };
 
   const handleFieldChange = (field, value) => {
-    setFormState((current) => ({ ...current, [field]: value }));
+    setFormState((current) => {
+      if (field !== 'type') {
+        return { ...current, [field]: value };
+      }
+
+      const selectedDestination = destinations.find((destination) => destination.value === current.destination_id);
+      const destinationMatchesType = selectedDestination
+        && selectedDestination.is_domestic === (value === 'DOMESTIC');
+
+      return {
+        ...current,
+        type: value,
+        destination_id: destinationMatchesType ? current.destination_id : '',
+      };
+    });
   };
 
   const handleSubmit = async (event) => {
@@ -222,6 +240,13 @@ const TourPackages = () => {
         .includes(term);
     });
   }, [packages, searchTerm]);
+
+  const formDestinations = useMemo(
+    () => destinations.filter((destination) => (
+      destination.is_domestic === (formState.type === 'DOMESTIC')
+    )),
+    [destinations, formState.type]
+  );
 
   return (
     <div className=" space-y-3 pb-6">
@@ -546,20 +571,6 @@ const TourPackages = () => {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Destination</label>
-              <SelectField
-                options={destinations}
-                value={destinations.find((d) => d.value === formState.destination_id) || null}
-                onChange={(selected) => handleFieldChange('destination_id', selected?.value || '')}
-                isSearchable
-                isLoading={destLoading}
-                placeholder={destLoading ? 'Loading destinations...' : 'Select destination'}
-                menuPlacement="auto"
-                classNamePrefix="react-select"
-              />
-            </div>
-
-            <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Type</label>
               <SelectField
                 options={packageTypeOptions}
@@ -567,6 +578,21 @@ const TourPackages = () => {
                 onChange={(selected) => handleFieldChange('type', selected?.value || '')}
                 isSearchable={false}
                 placeholder="Select type"
+                menuPlacement="auto"
+                classNamePrefix="react-select"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Destination</label>
+              <SelectField
+                options={formDestinations}
+                value={formDestinations.find((destination) => destination.value === formState.destination_id) || null}
+                onChange={(selected) => handleFieldChange('destination_id', selected?.value || '')}
+                isSearchable
+                isLoading={destLoading}
+                placeholder={destLoading ? 'Loading destinations...' : 'Select destination'}
+                noOptionsMessage={() => `No ${formState.type === 'DOMESTIC' ? 'domestic' : 'international'} destinations available`}
                 menuPlacement="auto"
                 classNamePrefix="react-select"
               />
