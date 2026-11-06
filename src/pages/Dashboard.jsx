@@ -110,6 +110,7 @@ const Dashboard = () => {
     { id: 'bookings', label: 'Total Bookings', value: formatNumber(summary.total_bookings?.count), change: summary.total_bookings?.growth_percentage, sub: summary.total_bookings?.comparison_period, color: 'blue' },
     { id: 'users', label: 'Registered Users', value: formatNumber(summary.registered_users?.count), change: summary.registered_users?.growth_percentage, sub: summary.registered_users?.comparison_period, color: 'violet' },
     { id: 'trips', label: 'Active Trips', value: formatNumber(summary.active_trips?.count), change: summary.active_trips?.growth_percentage, sub: summary.active_trips?.comparison_period, color: 'amber' },
+    { id: 'due', label: 'Due Amount', value: formatCurrency(summary.due_amount, summary.total_revenue?.currency), color: 'rose' },
   ];
   const quickStats = [
     { label: 'Hotels Listed', value: platform.hotels_listed, icon: Hotel, color: 'rose' },
@@ -143,7 +144,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {stats.map(stat => {
           const color = colorMap[stat.color];
           const growth = Number(stat.change || 0);
@@ -155,11 +156,13 @@ const Dashboard = () => {
                 <div className={`rounded-xl p-2.5 ${color.bg} ${color.text} ring-1 ${color.ring}`}><TrendingUp className="h-4 w-4" /></div>
               </div>
               <div className="mt-3"><span className="text-2xl font-bold text-gray-900 dark:text-white">{stat.value}</span></div>
-              <div className="mt-1.5 flex items-center gap-1.5">
-                <GrowthIcon className={`h-3.5 w-3.5 ${growth < 0 ? 'text-rose-500' : 'text-emerald-500'}`} />
-                <span className={`text-xs font-semibold ${growth < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{formatGrowth(growth)}</span>
-                <span className="text-xs text-gray-400 dark:text-gray-500">{stat.sub || ''}</span>
-              </div>
+              {stat.change !== undefined && (
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <GrowthIcon className={`h-3.5 w-3.5 ${growth < 0 ? 'text-rose-500' : 'text-emerald-500'}`} />
+                  <span className={`text-xs font-semibold ${growth < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{formatGrowth(growth)}</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500">{stat.sub || ''}</span>
+                </div>
+              )}
             </div>
           );
         })}

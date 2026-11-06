@@ -46,6 +46,7 @@ const Sidebar = ({
         { icon: ShieldCheck, label: "Staff Management", path: "/staff-management" },
         { icon: Users, label: "Customers", path: "/customers" },
         { icon: Gift, label: "Referrals", path: "/referrals" },
+        { icon: Users, label: "Promotional Contacts", path: "/promotional-contacts" },
         { icon: Coins, label: "Points & Loyalty", path: "/points" },
         { icon: HelpCircle, label: "Enquiries", path: "/enquiries" },
         { icon: Receipt, label: "Quotations", path: "/quotations" },

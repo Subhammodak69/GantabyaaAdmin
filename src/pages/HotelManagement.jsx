@@ -13,7 +13,6 @@ import {
   Phone,
   Filter,
   X,
-  UploadCloud,
   CheckCircle2,
   XCircle,
 } from 'lucide-react';
@@ -22,8 +21,7 @@ import ConfirmDeleteModal from '../component/common/ConfirmDeleteModal';
 import SelectField from '../component/common/SelectField';
 import Pagination from '../component/common/PaginationComponent';
 import ActionMenu from '../component/common/ActionMenu';
-import MediaPreviewModal from '../component/common/MediaPreviewModal';
-import { apiCall, handleApiError, uploadFile } from '../utils/apiCall';
+import { apiCall, handleApiError } from '../utils/apiCall';
 import { useEnums } from '../context/EnumsContext';
 
 const defaultForm = {
@@ -33,8 +31,6 @@ const defaultForm = {
   address: '',
   contact: '',
   description: '',
-  image: [],
-  is_active: true,
 };
 
 const HotelManagement = () => {
@@ -63,10 +59,6 @@ const HotelManagement = () => {
   const [formState, setFormState] = useState(defaultForm);
   const [destinations, setDestinations] = useState([]);
   const [destLoading, setDestLoading] = useState(false);
-
-  // Image upload in modal
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [newImageAlt, setNewImageAlt] = useState('');
 
   // Destination map for fast lookup: id -> name
   const destinationMap = useMemo(() => {
@@ -152,7 +144,6 @@ const HotelManagement = () => {
   const resetForm = () => {
     setFormState(defaultForm);
     setEditingHotel(null);
-    setNewImageAlt('');
   };
 
   const openCreateModal = () => {
@@ -162,18 +153,6 @@ const HotelManagement = () => {
 
   const openEditModal = (row) => {
     setEditingHotel(row);
-    // Normalize existing images array
-    const existingImages = Array.isArray(row?.image)
-      ? row.image.map((img, idx) => ({
-          id: img?.id || `img-${Date.now()}-${idx}`,
-          alt: img?.alt || row?.name || '',
-          url: img?.url || '',
-          type: img?.type || 'image',
-          display_order: img?.display_order ?? idx + 1,
-          additionalProperty: img?.additionalProperty || 'anything',
-        }))
-      : [];
-
     setFormState({
       name: row?.name || '',
       destination_id: row?.destination_id || '',
@@ -181,71 +160,12 @@ const HotelManagement = () => {
       address: row?.address || '',
       contact: row?.contact || '',
       description: row?.description || '',
-      image: existingImages,
-      is_active: row?.is_active !== false,
     });
-    setNewImageAlt('');
     setIsModalOpen(true);
   };
 
   const handleFieldChange = (field, value) => {
     setFormState((prev) => ({ ...prev, [field]: value }));
-  };
-
-  // Hotel gallery media handling
-  const handleImageFileUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploadingImage(true);
-    try {
-      const res = await uploadFile(file);
-      const url = res?.url || res?.data?.url || '';
-      if (!url) throw new Error('Uploaded file URL not found in response');
-
-      const nextOrder = (formState.image || []).length + 1;
-      const mediaType = file.type?.startsWith('video/') ? 'video' : 'image';
-      const newImg = {
-        id: `img-${Date.now()}`,
-        alt: newImageAlt.trim() || formState.name || file.name || 'Hotel media',
-        url,
-        type: mediaType,
-        display_order: nextOrder,
-        additionalProperty: 'anything',
-      };
-
-      setFormState((prev) => ({
-        ...prev,
-        image: [...(prev.image || []), newImg],
-      }));
-      setNewImageAlt('');
-      toast.success('Media uploaded successfully');
-    } catch (err) {
-      toast.error(err?.message || 'Failed to upload image');
-    } finally {
-      setUploadingImage(false);
-      if (e.target) e.target.value = '';
-    }
-  };
-
-  const removeImage = (index) => {
-    setFormState((prev) => {
-      const updated = (prev.image || []).filter((_, idx) => idx !== index);
-      return {
-        ...prev,
-        image: updated.map((img, idx) => ({ ...img, display_order: idx + 1 })),
-      };
-    });
-  };
-
-  const updateImageAlt = (index, alt) => {
-    setFormState((prev) => {
-      const updated = [...(prev.image || [])];
-      if (updated[index]) {
-        updated[index] = { ...updated[index], alt };
-      }
-      return { ...prev, image: updated };
-    });
   };
 
   // Submit create or update
@@ -255,32 +175,15 @@ const HotelManagement = () => {
       toast.error('Please provide a hotel name');
       return;
     }
-    if (uploadingImage) {
-      toast.error('Please wait for the image upload to finish');
-      return;
-    }
-    if (!formState.image?.some((image) => image?.url)) {
-      toast.error('Please upload at least one hotel image or video');
-      return;
-    }
-
     setSaving(true);
     try {
       const payload = {
         name: formState.name.trim(),
-        destination_id: formState.destination_id || '',
+        destination_id: formState.destination_id || null,
         category: formState.category || 'BUDGET',
         address: formState.address.trim(),
         contact: formState.contact.trim(),
         description: formState.description.trim(),
-        image: (formState.image || []).map((img, idx) => ({
-          id: img.id || `img-${idx + 1}`,
-          alt: img.alt || '',
-          url: img.url || '',
-          type: img.type || 'image',
-          display_order: img.display_order ?? idx + 1,
-          additionalProperty: img.additionalProperty || 'anything',
-        })),
       };
 
       const endpoint = editingHotel
@@ -306,35 +209,6 @@ const HotelManagement = () => {
       handleApiError(error, editingHotel ? 'Unable to update hotel' : 'Unable to create hotel');
     } finally {
       setSaving(false);
-    }
-  };
-
-  // Toggle active status via PATCH
-  const handleToggleActive = async (hotel) => {
-    try {
-      const newStatus = !hotel.is_active;
-      const response = await apiCall(`/api/v1/admin/hotels/${hotel.id}`, 'PATCH', {
-        name: hotel.name,
-        destination_id: hotel.destination_id,
-        category: hotel.category,
-        address: hotel.address,
-        contact: hotel.contact,
-        description: hotel.description,
-        image: hotel.image || [],
-        is_active: newStatus,
-      });
-
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(result?.message || result?.detail || 'Failed to update status');
-      }
-
-      toast.success(`Hotel ${newStatus ? 'activated' : 'deactivated'} successfully`);
-      setHotels((prev) =>
-        prev.map((h) => (h.id === hotel.id ? { ...h, is_active: newStatus } : h))
-      );
-    } catch (error) {
-      handleApiError(error, 'Unable to update status');
     }
   };
 
@@ -421,7 +295,7 @@ const HotelManagement = () => {
               Hotel Management
             </h1>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Manage hotels, resorts, categories, gallery photos, and destination assignments.
+              Manage hotel listings, categories, and destination assignments.
             </p>
           </div>
 
@@ -589,7 +463,7 @@ const HotelManagement = () => {
             <ManagementTable><table className="min-w-full divide-y divide-gray-200 text-left text-sm dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-800/70">
                 <tr>
-                  <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Hotel & Gallery</th>
+                  <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Hotel</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Category</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Destination</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Contact & Address</th>
@@ -599,9 +473,6 @@ const HotelManagement = () => {
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {filteredHotels.map((hotel) => {
-                  const images = Array.isArray(hotel.image) ? hotel.image : [];
-                  const primaryMedia = images[0];
-                  const primaryImg = primaryMedia?.url;
                   const destName = destinationMap[hotel.destination_id] || '—';
                   const badgeClass =
                     categoryBadgeColors[hotel.category?.toUpperCase()] ||
@@ -612,29 +483,12 @@ const HotelManagement = () => {
                       key={hotel.id}
                       className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                     >
-                      {/* Hotel Info + Primary Image */}
+                      {/* Hotel Info */}
                       <td className="px-4 py-4">
                         <div className="flex items-start gap-3">
-                          {primaryImg ? (
-                            <div className="relative group shrink-0">
-                              <MediaPreviewModal
-                                src={primaryImg}
-                                alt={hotel.name}
-                                type={primaryMedia?.type || 'image'}
-                                thumbnailClassName="h-12 w-12 rounded-xl object-cover ring-2 ring-indigo-100 dark:ring-indigo-950"
-                                className="block"
-                              />
-                              {images.length > 1 && (
-                                <span className="absolute bottom-0.5 right-0.5 rounded-md bg-black/70 px-1 py-0.2 text-[9px] font-medium text-white">
-                                  +{images.length - 1}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-500 dark:bg-indigo-950/40 dark:text-indigo-400">
-                              <Building2 className="h-5 w-5" />
-                            </div>
-                          )}
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-500 dark:bg-indigo-950/40 dark:text-indigo-400">
+                            <Building2 className="h-5 w-5" />
+                          </div>
 
                           <div className="min-w-0">
                             <h4
@@ -647,9 +501,6 @@ const HotelManagement = () => {
                                 {hotel.description}
                               </p>
                             )}
-                            <div className="mt-0.5 text-[11px] text-gray-400">
-                              {images.length} {images.length === 1 ? 'media item' : 'media items'}
-                            </div>
                           </div>
                         </div>
                       </td>
@@ -690,27 +541,14 @@ const HotelManagement = () => {
 
                       {/* Status */}
                       <td className="px-4 py-4 whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleActive(hotel)}
-                          className={[
-                            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition cursor-pointer',
-                            hotel.is_active === false
-                              ? 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300'
-                              : 'border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300',
-                          ].join(' ')}
-                          title="Click to toggle status"
-                        >
-                          {hotel.is_active === false ? (
-                            <>
-                              <XCircle className="h-3 w-3" /> Inactive
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle2 className="h-3 w-3" /> Active
-                            </>
-                          )}
-                        </button>
+                        <span className={[
+                          'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
+                          hotel.is_active === false
+                            ? 'border-red-200 bg-red-50 text-red-600 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300',
+                        ].join(' ')}>
+                          {hotel.is_active === false ? <><XCircle className="h-3 w-3" /> Inactive</> : <><CheckCircle2 className="h-3 w-3" /> Active</>}
+                        </span>
                       </td>
 
                       {/* Actions */}
@@ -781,10 +619,10 @@ const HotelManagement = () => {
             <button
               type="submit"
               form="hotel-form"
-              disabled={saving || uploadingImage}
+              disabled={saving}
               className="rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 transition"
             >
-              {uploadingImage ? 'Uploading image...' : saving ? 'Saving...' : editingHotel ? 'Save changes' : 'Create hotel'}
+              {saving ? 'Saving...' : editingHotel ? 'Save changes' : 'Create hotel'}
             </button>
           </div>
         )}
@@ -872,93 +710,6 @@ const HotelManagement = () => {
             />
           </div>
 
-          {/* Status Toggle (For Edit) */}
-          {/* Image Gallery Management */}
-          <div className="space-y-3 pt-3 border-t border-gray-200 dark:border-gray-800">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
-                  Hotel gallery ({formState.image?.length || 0}) <span className="text-red-500">*</span>
-                </h4>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  At least one image or video is required. Add photos and videos representing the property.
-                </p>
-              </div>
-            </div>
-
-            {/* Quick Upload Input */}
-            <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-              <input
-                type="text"
-                placeholder="Optional caption / alt text..."
-                value={newImageAlt}
-                onChange={(e) => setNewImageAlt(e.target.value)}
-                className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-              />
-              <label
-                className={`inline-flex items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-medium text-indigo-600 cursor-pointer hover:bg-indigo-100 dark:border-indigo-900/50 dark:bg-indigo-950/40 dark:text-indigo-300 transition ${
-                  uploadingImage ? 'opacity-50 pointer-events-none' : ''
-                }`}
-              >
-                <UploadCloud className="h-4 w-4" />
-                {uploadingImage ? 'Uploading...' : 'Upload media'}
-                <input
-                  type="file"
-                  accept="image/*,video/*"
-                  onChange={handleImageFileUpload}
-                  disabled={uploadingImage}
-                  className="hidden"
-                />
-              </label>
-            </div>
-
-            {/* Existing Images Grid */}
-            {formState.image && formState.image.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-56 overflow-y-auto p-1">
-                {formState.image.map((img, idx) => (
-                  <div
-                    key={img.id || idx}
-                    className="group relative rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50 dark:bg-gray-800 shadow-xs"
-                  >
-                    <MediaPreviewModal
-                      src={img.url}
-                      alt={img.alt || `Hotel ${idx + 1}`}
-                      type={img.type || 'image'}
-                      thumbnailClassName="h-24 w-full object-cover"
-                      className="block w-full"
-                    />
-                    <div className="space-y-1 p-1.5">
-                      <input
-                        type="text"
-                        value={img.alt || ''}
-                        onChange={(e) => updateImageAlt(idx, e.target.value)}
-                        placeholder="Caption/Alt"
-                        className="w-full text-[11px] rounded px-1 py-0.5 border border-transparent hover:border-gray-300 focus:border-indigo-500 bg-transparent text-gray-700 dark:text-gray-300 outline-none"
-                      />
-                      <span className="inline-flex rounded-md bg-gray-100 px-2 py-1 text-[10px] font-semibold capitalize text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                        {img.type === 'video' ? 'Video' : 'Image'}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeImage(idx)}
-                      className="absolute top-1 right-1 rounded-full bg-red-600/90 text-white p-1 hover:bg-red-700 transition shadow-sm"
-                      title="Remove media"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                    <span className="absolute top-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[9px] font-medium text-white">
-                      #{idx + 1}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-800 p-4 text-center text-xs text-gray-400">
-                No media added yet. Click &quot;Upload media&quot; to add hotel photos or videos.
-              </div>
-            )}
-          </div>
         </form>
       </Modal>
     </div>

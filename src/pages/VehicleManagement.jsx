@@ -8,10 +8,8 @@ import {
   Trash2,
   Search,
   RefreshCw,
-  UploadCloud,
   Filter,
   X,
-  Image as ImageIcon,
   Check,
 } from 'lucide-react';
 import Modal from '../component/common/Modal';
@@ -20,12 +18,11 @@ import { sanitizeNumericInput } from '../utils/inputValidation';
 import SelectField from '../component/common/SelectField';
 import Pagination from '../component/common/PaginationComponent';
 import ActionMenu from '../component/common/ActionMenu';
-import { apiCall, handleApiError, uploadFile } from '../utils/apiCall';
+import { apiCall, handleApiError } from '../utils/apiCall';
 import { useEnums } from '../context/EnumsContext';
 
 const defaultForm = {
   name: '',
-  vehicle_image: [],
   vehicle_type: 'ANY',
   registration_number: '',
   capacity: 1,
@@ -78,8 +75,6 @@ const VehicleManagement = () => {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [totalItems, setTotalItems] = useState(0);
   const [formState, setFormState] = useState(defaultForm);
-  const [imageUploadLoading, setImageUploadLoading] = useState(false);
-  const [newImageAlt, setNewImageAlt] = useState('');
 
   const loadVehicles = useCallback(
     async (page = currentPage, limit = itemsPerPage) => {
@@ -114,7 +109,6 @@ const VehicleManagement = () => {
   const resetForm = () => {
     setFormState(defaultForm);
     setEditingVehicle(null);
-    setNewImageAlt('');
   };
 
   const openCreateModal = () => {
@@ -126,14 +120,12 @@ const VehicleManagement = () => {
     setEditingVehicle(vehicle);
     setFormState({
       name: vehicle?.name || '',
-      vehicle_image: Array.isArray(vehicle?.vehicle_image) ? vehicle.vehicle_image : [],
       vehicle_type: vehicle?.vehicle_type || 'ANY',
       registration_number: vehicle?.registration_number || '',
       capacity: Number(vehicle?.capacity ?? 1),
       price_per_day: vehicle?.price_per_day ?? '0.00',
       is_active: vehicle?.is_active !== false,
     });
-    setNewImageAlt('');
     setIsModalOpen(true);
   };
 
@@ -146,49 +138,6 @@ const VehicleManagement = () => {
     setFormState((current) => ({ ...current, [field]: value }));
   };
 
-  const handleImageUpload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setImageUploadLoading(true);
-    try {
-      const result = await uploadFile(file);
-      const url = result?.url || '';
-      if (!url) throw new Error('Uploaded file URL not found in response');
-
-      const nextImage = {
-        id: `img-${Date.now()}`,
-        alt: newImageAlt.trim() || formState.name || file.name || 'Vehicle image',
-        url,
-        type: 'image',
-        display_order: (formState.vehicle_image || []).length + 1,
-        additionalProperty: 'anything',
-      };
-
-      setFormState((current) => ({
-        ...current,
-        vehicle_image: [...(current.vehicle_image || []), nextImage],
-      }));
-      setNewImageAlt('');
-      toast.success('Vehicle image uploaded successfully');
-    } catch (error) {
-      toast.error(error?.message || 'Failed to upload image');
-    } finally {
-      setImageUploadLoading(false);
-      if (event.target) event.target.value = '';
-    }
-  };
-
-  const removeImage = (index) => {
-    setFormState((current) => ({
-      ...current,
-      vehicle_image: (current.vehicle_image || []).filter((_, idx) => idx !== index).map((item, idx) => ({
-        ...item,
-        display_order: idx + 1,
-      })),
-    }));
-  };
-
   const handleSubmit = async (event) => {
     event.preventDefault();
     setSaving(true);
@@ -196,14 +145,6 @@ const VehicleManagement = () => {
     try {
       const payload = {
         name: formState.name.trim(),
-        vehicle_image: (formState.vehicle_image || []).map((image, index) => ({
-          id: image?.id || `img-${index + 1}`,
-          alt: image?.alt || formState.name || 'Vehicle image',
-          url: image?.url || '',
-          type: image?.type || 'image',
-          display_order: image?.display_order ?? index + 1,
-          additionalProperty: image?.additionalProperty || 'anything',
-        })),
         vehicle_type: formState.vehicle_type || 'ANY',
         registration_number: formState.registration_number.trim(),
         capacity: Number(formState.capacity) || 1,
@@ -482,18 +423,8 @@ const VehicleManagement = () => {
                     <tr key={vehicle.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/60">
                       <td className="px-4 py-3 align-top">
                         <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-900">
-                            {vehicle?.vehicle_image?.[0]?.url ? (
-                              <img
-                                src={vehicle.vehicle_image[0].url}
-                                alt={vehicle.name || 'Vehicle'}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center text-slate-400">
-                                <ImageIcon className="h-4 w-4" />
-                              </div>
-                            )}
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-700 dark:bg-slate-900">
+                            <Car className="h-4 w-4" />
                           </div>
                           <div>
                             <div className="font-semibold text-slate-900 dark:text-slate-100">{vehicle.name || 'Unnamed vehicle'}</div>
@@ -661,52 +592,6 @@ const VehicleManagement = () => {
             </div>
           )}
 
-          <div>
-            <label className={labelClass}>Vehicle images</label>
-            <div className="space-y-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/40">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <input
-                  value={newImageAlt}
-                  onChange={(event) => setNewImageAlt(event.target.value)}
-                  className={`${inputClass} flex-1`}
-                  placeholder="Image alt text"
-                />
-                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
-                  <UploadCloud className="h-4 w-4" />
-                  {imageUploadLoading ? 'Uploading...' : 'Upload image'}
-                  <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                </label>
-              </div>
-
-              {formState.vehicle_image?.length ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {formState.vehicle_image.map((image, index) => (
-                    <div key={`${image?.id || index}-image`} className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-                      {image?.url ? (
-                        <img src={image.url} alt={image.alt || 'Vehicle'} className="h-24 w-full object-cover" />
-                      ) : (
-                        <div className="flex h-24 items-center justify-center bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-500">
-                          <ImageIcon className="h-6 w-6" />
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between gap-2 p-2">
-                        <span className="truncate text-xs text-slate-600 dark:text-slate-300">{image?.alt || 'Vehicle image'}</span>
-                        <button
-                          type="button"
-                          onClick={() => removeImage(index)}
-                          className="rounded-lg p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-sm text-slate-500 dark:text-slate-400">No images added yet.</div>
-              )}
-            </div>
-          </div>
         </form>
       </Modal>
     </div>

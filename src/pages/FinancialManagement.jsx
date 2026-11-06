@@ -61,6 +61,7 @@ const transactionStatusOptions = [
 
 const views = [
   { id: 'transactions', label: 'Transactions', icon: Wallet },
+  { id: 'outstanding', label: 'Outstanding', icon: Layers },
   { id: 'reports', label: 'Reports', icon: FileText },
   { id: 'statistics', label: 'Statistics', icon: ChartNoAxesCombined },
 ];
@@ -100,6 +101,12 @@ const FinancialManagement = () => {
   const [activeView, setActiveView] = useState('transactions');
   const [transactions, setTransactions] = useState([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
+  const [outstandingBookings, setOutstandingBookings] = useState([]);
+  const [loadingOutstanding, setLoadingOutstanding] = useState(false);
+  const [outstandingFilters, setOutstandingFilters] = useState({ search: '', status: '', min_due: '', max_due: '' });
+  const [outstandingPage, setOutstandingPage] = useState(1);
+  const [outstandingPageSize, setOutstandingPageSize] = useState(20);
+  const [outstandingTotalItems, setOutstandingTotalItems] = useState(0);
   const [filters, setFilters] = useState(emptyFilters);
   const [filterDraft, setFilterDraft] = useState(emptyFilters);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -148,9 +155,33 @@ const FinancialManagement = () => {
     }
   }, [currentPage, pageSize, filters]);
 
+  const loadOutstandingBookings = useCallback(async (page = outstandingPage, limit = outstandingPageSize) => {
+    setLoadingOutstanding(true);
+    try {
+      const params = new URLSearchParams({ page: String(page), page_size: String(limit) });
+      Object.entries(outstandingFilters).forEach(([key, value]) => {
+        if (value) params.set(key, value);
+      });
+      const response = await apiCall(`/api/v1/admin/financial/outstanding-bookings?${params}`, 'GET');
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.message || payload?.detail || 'Unable to load outstanding bookings');
+      const items = getRows(payload);
+      setOutstandingBookings(items);
+      setOutstandingTotalItems(Number(payload?.pagination?.total_items ?? items.length));
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setLoadingOutstanding(false);
+    }
+  }, [outstandingFilters, outstandingPage, outstandingPageSize]);
+
   useEffect(() => {
     loadTransactions(currentPage, pageSize);
   }, [loadTransactions, currentPage, pageSize]);
+
+  useEffect(() => {
+    if (activeView === 'outstanding') loadOutstandingBookings(outstandingPage, outstandingPageSize);
+  }, [activeView, loadOutstandingBookings, outstandingPage, outstandingPageSize]);
 
   const loadStatistics = useCallback(async () => {
     setLoadingStatistics(true);
@@ -572,6 +603,18 @@ const FinancialManagement = () => {
               <span className="hidden sm:inline">New transaction</span>
             </button>
           )}
+          {activeView === 'outstanding' && (
+            <button
+              type="button"
+              onClick={() => loadOutstandingBookings(outstandingPage, outstandingPageSize)}
+              aria-label="Refresh outstanding bookings"
+              title="Refresh outstanding bookings"
+              className="inline-flex h-[42px] items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            >
+              <RefreshCw className={`h-4 w-4 ${loadingOutstanding ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+          )}
           {activeView === 'reports' && (
             <button
               type="button"
@@ -670,6 +713,110 @@ const FinancialManagement = () => {
             {totalItems} record{totalItems === 1 ? '' : 's'}
           </span>
         </div>
+      )}
+
+      {activeView === 'outstanding' && (
+        <section className="space-y-4">
+          <div className="grid gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:grid-cols-2 xl:grid-cols-4">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+              Search
+              <input
+                value={outstandingFilters.search}
+                onChange={event => {
+                  setOutstandingFilters(current => ({ ...current, search: event.target.value }));
+                  setOutstandingPage(1);
+                }}
+                placeholder="Booking code or customer"
+                className={`${inputClass} mt-1`}
+              />
+            </label>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+              Booking status
+              <select
+                value={outstandingFilters.status}
+                onChange={event => {
+                  setOutstandingFilters(current => ({ ...current, status: event.target.value }));
+                  setOutstandingPage(1);
+                }}
+                className={`${inputClass} mt-1`}
+              >
+                <option value="">All statuses</option>
+                {['TENTATIVE', 'CONFIRMED', 'PARTIALLY_PAID', 'FULLY_PAID', 'TRAVELLED', 'COMPLETED', 'ON_HOLD', 'CANCELLED', 'REFUNDED'].map(status => (
+                  <option key={status} value={status}>{prettyLabel(status)}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+              Minimum due
+              <input
+                type="number"
+                min="0"
+                value={outstandingFilters.min_due}
+                onChange={event => {
+                  setOutstandingFilters(current => ({ ...current, min_due: event.target.value }));
+                  setOutstandingPage(1);
+                }}
+                className={`${inputClass} mt-1`}
+              />
+            </label>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+              Maximum due
+              <input
+                type="number"
+                min="0"
+                value={outstandingFilters.max_due}
+                onChange={event => {
+                  setOutstandingFilters(current => ({ ...current, max_due: event.target.value }));
+                  setOutstandingPage(1);
+                }}
+                className={`${inputClass} mt-1`}
+              />
+            </label>
+          </div>
+
+          <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            {loadingOutstanding ? (
+              <div className="flex min-h-56 items-center justify-center gap-2 text-sm text-gray-500"><RefreshCw className="h-4 w-4 animate-spin" />Loading outstanding bookings...</div>
+            ) : outstandingBookings.length === 0 ? (
+              <div className="flex min-h-56 flex-col items-center justify-center gap-2 text-center">
+                <Wallet className="h-9 w-9 text-gray-300" />
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">No outstanding bookings found</p>
+                <p className="text-xs text-gray-500">Try changing the filters or search term.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <ManagementTable><table className="min-w-full text-left text-sm">
+                  <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 dark:bg-gray-800/70 dark:text-gray-400">
+                    <tr><th className="px-4 py-3">Booking</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Departure</th><th className="px-4 py-3 text-right">Total</th><th className="px-4 py-3 text-right">Paid</th><th className="px-4 py-3 text-right">Due</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {outstandingBookings.map(booking => (
+                      <tr key={booking.booking_id} className="hover:bg-gray-50/70 dark:hover:bg-gray-800/40">
+                        <td className="px-4 py-3"><p className="font-semibold text-gray-900 dark:text-white">{booking.booking_code || booking.booking_id}</p><p className="text-xs text-gray-500">Created {formatDate(booking.created_at)}</p></td>
+                        <td className="px-4 py-3"><p className="font-medium text-gray-800 dark:text-gray-200">{booking.customer_name || '—'}</p><p className="text-xs text-gray-500">{booking.customer_email || booking.customer_mobile || '—'}</p></td>
+                        <td className="px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(booking.status)}`}>{prettyLabel(booking.status || 'Unknown')}</span></td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{formatDate(booking.departure_date)}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-gray-700 dark:text-gray-200">{formatAmount(booking.total_amount, booking.currency)}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-gray-700 dark:text-gray-200">{formatAmount(booking.paid_amount, booking.currency)}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right font-bold text-rose-600 dark:text-rose-400">{formatAmount(booking.due_amount, booking.currency)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table></ManagementTable>
+              </div>
+            )}
+          </section>
+          <Pagination
+            currentPage={outstandingPage}
+            totalItems={outstandingTotalItems}
+            itemsPerPage={outstandingPageSize}
+            onPageChange={setOutstandingPage}
+            onLimitChange={limit => {
+              setOutstandingPageSize(limit);
+              setOutstandingPage(1);
+            }}
+          />
+        </section>
       )}
 
       {activeView === 'transactions' && (

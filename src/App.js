@@ -31,6 +31,7 @@ const BookingCalendar = lazy(() => import('./pages/BookingCalendar'));
 const EnquiryManagement = lazy(() => import('./pages/EnquiryManagement'));
 const LeadManagement = lazy(() => import('./pages/LeadManagement'));
 const Referrals = lazy(() => import('./pages/Referrals'));
+const PromotionalContacts = lazy(() => import('./pages/PromotionalContacts'));
 const ReferralsConfiguration = lazy(() => import('./pages/ReferralsConfiguration'));
 const RulesRegulations = lazy(() => import('./pages/RulesRegulations'));
 const PointsManagement = lazy(() => import('./pages/PointsManagement'));
@@ -73,6 +74,7 @@ function App() {
             <Route path="/customers" element={<CustomerManagement />} />
             <Route path="/customers/:customerId" element={<CustomerDetails />} />
             <Route path="/referrals" element={<Referrals />} />
+            <Route path="/promotional-contacts" element={<PromotionalContacts />} />
             <Route path="/referrals/configuration" element={<ReferralsConfiguration />} />
             <Route path="/rules-regulations" element={<RulesRegulations />} />
             <Route path="/points" element={<PointsManagement />} />
