@@ -10,7 +10,6 @@ import {
   Search,
   RefreshCw,
   MapPin,
-  Phone,
   Filter,
   X,
   CheckCircle2,
@@ -29,7 +28,6 @@ const defaultForm = {
   destination_id: '',
   category: 'BUDGET',
   address: '',
-  contact: '',
   description: '',
 };
 
@@ -158,7 +156,6 @@ const HotelManagement = () => {
       destination_id: row?.destination_id || '',
       category: row?.category || 'BUDGET',
       address: row?.address || '',
-      contact: row?.contact || '',
       description: row?.description || '',
     });
     setIsModalOpen(true);
@@ -182,7 +179,6 @@ const HotelManagement = () => {
         destination_id: formState.destination_id || null,
         category: formState.category || 'BUDGET',
         address: formState.address.trim(),
-        contact: formState.contact.trim(),
         description: formState.description.trim(),
       };
 
@@ -244,7 +240,7 @@ const HotelManagement = () => {
     return hotels.filter((item) => {
       const matchesSearch =
         !term ||
-        [item.name, item.address, item.contact, item.description, item.category]
+        [item.name, item.address, item.description, item.category]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
@@ -522,16 +518,10 @@ const HotelManagement = () => {
                         </div>
                       </td>
 
-                      {/* Contact & Address */}
+                      {/* Address */}
                       <td className="px-4 py-4 max-w-xs">
-                        {hotel.contact && (
-                          <div className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300 font-medium">
-                            <Phone className="h-3 w-3 text-emerald-500 shrink-0" />
-                            <span className="truncate">{hotel.contact}</span>
-                          </div>
-                        )}
                         {hotel.address ? (
-                          <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500 line-clamp-1">
+                          <p className="text-xs text-gray-400 dark:text-gray-500 line-clamp-1">
                             {hotel.address}
                           </p>
                         ) : (
@@ -673,17 +663,6 @@ const HotelManagement = () => {
               />
             </div>
 
-            {/* Contact Phone / Email */}
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Contact info</label>
-              <input
-                type="text"
-                value={formState.contact}
-                onChange={(e) => handleFieldChange('contact', e.target.value)}
-                placeholder="e.g. +91 9876543210 / info@hotel.com"
-                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-              />
-            </div>
           </div>
 
           {/* Address */}

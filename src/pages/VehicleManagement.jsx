@@ -26,7 +26,6 @@ const defaultForm = {
   vehicle_type: 'ANY',
   registration_number: '',
   capacity: 1,
-  price_per_day: '0.00',
   is_active: true,
 };
 
@@ -43,17 +42,6 @@ const formatDate = (value) => {
   } catch {
     return value;
   }
-};
-
-const moneyValue = (value) => {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return '₹0.00';
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(numeric);
 };
 
 const VehicleManagement = () => {
@@ -123,7 +111,6 @@ const VehicleManagement = () => {
       vehicle_type: vehicle?.vehicle_type || 'ANY',
       registration_number: vehicle?.registration_number || '',
       capacity: Number(vehicle?.capacity ?? 1),
-      price_per_day: vehicle?.price_per_day ?? '0.00',
       is_active: vehicle?.is_active !== false,
     });
     setIsModalOpen(true);
@@ -148,7 +135,6 @@ const VehicleManagement = () => {
         vehicle_type: formState.vehicle_type || 'ANY',
         registration_number: formState.registration_number.trim(),
         capacity: Number(formState.capacity) || 1,
-        price_per_day: String(formState.price_per_day ?? '0.00'),
       };
 
       if (editingVehicle) {
@@ -219,7 +205,6 @@ const VehicleManagement = () => {
         vehicle?.vehicle_type,
         vehicle?.registration_number,
         vehicle?.capacity,
-        vehicle?.price_per_day,
       ]
         .filter(Boolean)
         .join(' ')
@@ -412,7 +397,6 @@ const VehicleManagement = () => {
                     <th className="px-4 py-3 font-semibold">Type</th>
                     <th className="px-4 py-3 font-semibold">Registration</th>
                     <th className="px-4 py-3 font-semibold">Capacity</th>
-                    <th className="px-4 py-3 font-semibold">Price/day</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3 font-semibold">Updated</th>
                     <th className="px-4 py-3 text-right font-semibold">Actions</th>
@@ -435,7 +419,6 @@ const VehicleManagement = () => {
                       <td className="px-4 py-3 align-top text-slate-700 dark:text-slate-200">{vehicle.vehicle_type || 'ANY'}</td>
                       <td className="px-4 py-3 align-top text-slate-700 dark:text-slate-200">{vehicle.registration_number || '—'}</td>
                       <td className="px-4 py-3 align-top text-slate-700 dark:text-slate-200">{vehicle.capacity ?? 0}</td>
-                      <td className="px-4 py-3 align-top text-slate-700 dark:text-slate-200">{moneyValue(vehicle.price_per_day)}</td>
                       <td className="px-4 py-3 align-top">
                         <span
                           className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
@@ -557,19 +540,6 @@ const VehicleManagement = () => {
                 value={formState.capacity}
                 onChange={(event) => handleFieldChange('capacity', sanitizeNumericInput(event.target.value))}
                 className={inputClass}
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className={labelClass}>Price per day</label>
-              <input
-                type="text"
-                inputMode="decimal"
-                min="0"
-                step="0.01"
-                value={formState.price_per_day}
-                onChange={(event) => handleFieldChange('price_per_day', sanitizeNumericInput(event.target.value))}
-                className={inputClass}
-                placeholder="0.00"
               />
             </div>
           </div>

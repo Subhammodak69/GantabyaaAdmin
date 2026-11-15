@@ -15,7 +15,9 @@ import { sanitizeNumericInput } from '../utils/inputValidation';
 
 const inputClass = 'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/15 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200';
 const emptyTraveller = { full_name: '', gender: '', date_of_birth: '', mobile: '', email: '', relationship_to_customer: '', is_primary: false };
-const defaultForm = { customer_id: '', enquiry_id: '', quotation_id: '', destination_id: '', package_id: '', variant_id: '', departure_id: '', departure_date: '', return_date: '', adult_count: '1', child_count: '0', senior_count: '0', total_selling_price: '0', advance_received: '0', payment_mode: 'CASH', sales_account_id: '', source: 'OFFLINE', special_notes: '', travellers: [{ ...emptyTraveller }] };
+const emptyHotel = { hotel_id: '', hotel_name: '', check_in: '', check_out: '', nights: 1, room_count: 1, room_type: '' };
+const emptyVehicle = { vehicle_id: '', vehicle_name: '', vehicle_type: 'ANY', start_date: '', end_date: '', rental_minutes: 1, quantity: 1 };
+const defaultForm = { customer_id: '', enquiry_id: '', quotation_id: '', destination_id: '', package_id: '', variant_id: '', departure_id: '', departure_date: '', return_date: '', adult_count: '1', child_count: '0', senior_count: '0', total_selling_price: '0', advance_received: '0', payment_mode: 'CASH', sales_account_id: '', source: 'OFFLINE', special_notes: '', travellers: [{ ...emptyTraveller }], hotels: [], vehicles: [] };
 const getPerPersonSellingPrice = (variant) => {
   const value = variant?.selling_price || variant?.list_price || variant?.price;
   if (value == null || value === '') return null;
@@ -52,6 +54,8 @@ const referenceEndpoints = {
   destination_id: '/api/v1/admin/destinations?page=1&page_size=100',
   package_id: '/api/v1/admin/tour-packages?page=1&page_size=100',
   sales_account_id: '/api/v1/admin/account?page=1&page_size=100',
+  hotel_id: '/api/v1/admin/hotels?page=1&page_size=100',
+  vehicle_id: '/api/v1/admin/vehicles?page=1&page_size=100',
 };
 
 const BookingManagementWizard = () => {
@@ -62,6 +66,8 @@ const BookingManagementWizard = () => {
   const bookingSourceOptions = apiBookingSources.length ? apiBookingSources : fallbackEnumOptions(bookingSources);
   const paymentMethodOptions = getEnumOptions('PaymentMethod').length ? getEnumOptions('PaymentMethod') : fallbackEnumOptions(paymentMethods);
   const genderOptions = getEnumOptions('Gender').length ? getEnumOptions('Gender') : fallbackEnumOptions(['MALE', 'FEMALE', 'OTHER']);
+  const roomTypeOptions = getEnumOptions('RoomType');
+  const vehicleTypeOptions = getEnumOptions('VehicleType');
 
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -176,6 +182,12 @@ const BookingManagementWizard = () => {
 
   const updateForm = (field, value) => setForm((current) => ({ ...current, [field]: value }));
   const updateTraveller = (index, field, value) => setForm((current) => ({ ...current, travellers: current.travellers.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item) }));
+  const updateTripDetail = (field, index, key, value) => setForm((current) => ({
+    ...current,
+    [field]: current[field].map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item),
+  }));
+  const addTripDetail = (field, template) => setForm((current) => ({ ...current, [field]: [...current[field], { ...template }] }));
+  const removeTripDetail = (field, index) => setForm((current) => ({ ...current, [field]: current[field].filter((_, itemIndex) => itemIndex !== index) }));
   const openCreate = () => {
     createSubmitRequested.current = false;
     setForm(defaultForm);
@@ -576,6 +588,13 @@ const BookingManagementWizard = () => {
       setCreateStep(4);
       return;
     }
+    const invalidHotel = form.hotels.find((hotel) => !hotel.hotel_name.trim() || !hotel.check_in || !hotel.check_out || Number(hotel.nights) < 1 || Number(hotel.room_count) < 1);
+    const invalidVehicle = form.vehicles.find((vehicle) => !vehicle.vehicle_name.trim() || !vehicle.start_date || !vehicle.end_date || Number(vehicle.rental_minutes) < 1 || Number(vehicle.quantity) < 1);
+    if (invalidHotel || invalidVehicle) {
+      toast.error('Complete or remove every hotel and vehicle row before creating the booking.');
+      setCreateStep(2);
+      return;
+    }
 
     setSaving(true);
     try {
@@ -612,8 +631,24 @@ const BookingManagementWizard = () => {
             is_primary: Boolean(traveller.is_primary),
           })),
         items: [],
-        hotels: [],
-        vehicles: [],
+        hotels: form.hotels.map((hotel) => ({
+          ...hotel,
+          hotel_id: hotel.hotel_id || null,
+          check_in: new Date(hotel.check_in).toISOString(),
+          check_out: new Date(hotel.check_out).toISOString(),
+          nights: Number(hotel.nights),
+          room_count: Number(hotel.room_count),
+          room_type: hotel.room_type || null,
+        })),
+        vehicles: form.vehicles.map((vehicle) => ({
+          ...vehicle,
+          vehicle_id: vehicle.vehicle_id || null,
+          start_date: new Date(vehicle.start_date).toISOString(),
+          end_date: new Date(vehicle.end_date).toISOString(),
+          vehicle_type: vehicle.vehicle_type || null,
+          rental_minutes: Number(vehicle.rental_minutes),
+          quantity: Number(vehicle.quantity),
+        })),
         itinerary: [],
       };
 
@@ -1079,6 +1114,42 @@ const BookingManagementWizard = () => {
                 {field('Children (Age 2-11)', 'child_count', 'number')}
                 {field('Seniors (Age 60+)', 'senior_count', 'number')}
               </div>
+
+              <section className="space-y-3 rounded-xl border border-slate-200 p-4 dark:border-gray-700">
+                <div className="flex items-center justify-between gap-3">
+                  <div><h4 className="font-semibold">Hotels</h4><p className="text-xs text-gray-500">Optional accommodation details for this booking.</p></div>
+                  <button type="button" onClick={() => addTripDetail('hotels', emptyHotel)} className="text-sm font-semibold text-cyan-700">Add hotel</button>
+                </div>
+                {form.hotels.map((hotel, index) => (
+                  <div key={`booking-hotel-${index}`} className="grid gap-3 rounded-lg bg-slate-50 p-3 md:grid-cols-2 dark:bg-gray-900/50">
+                    <div><label className="mb-1 block text-xs font-medium">Hotel reference</label><SelectField options={optionFor('hotel_id')} isLoading={Boolean(referencesLoading.hotel_id)} isSearchable isClearable value={optionFor('hotel_id').find((option) => option.value === hotel.hotel_id) || null} onMenuOpen={() => loadReference('hotel_id')} onChange={(option) => { updateTripDetail('hotels', index, 'hotel_id', option?.value || ''); updateTripDetail('hotels', index, 'hotel_name', option?.raw?.name || ''); }} placeholder="Select hotel or enter a name below" /></div>
+                    <div><label className="mb-1 block text-xs font-medium">Hotel name *</label><input value={hotel.hotel_name} onChange={(event) => updateTripDetail('hotels', index, 'hotel_name', event.target.value)} className={inputClass} /></div>
+                    {['check_in', 'check_out'].map((key) => <div key={key}><label className="mb-1 block text-xs font-medium">{key === 'check_in' ? 'Check in' : 'Check out'} *</label><CustomDatePicker value={hotel[key]} includeTime onChange={(value) => updateTripDetail('hotels', index, key, value)} /></div>)}
+                    <div><label className="mb-1 block text-xs font-medium">Nights *</label><input type="text" inputMode="numeric" value={hotel.nights} onChange={(event) => updateTripDetail('hotels', index, 'nights', sanitizeNumericInput(event.target.value))} className={inputClass} /></div>
+                    <div><label className="mb-1 block text-xs font-medium">Rooms *</label><input type="text" inputMode="numeric" value={hotel.room_count} onChange={(event) => updateTripDetail('hotels', index, 'room_count', sanitizeNumericInput(event.target.value))} className={inputClass} /></div>
+                    <div><label className="mb-1 block text-xs font-medium">Room type</label><SelectField options={roomTypeOptions} value={roomTypeOptions.find((option) => option.value === hotel.room_type) || null} onChange={(option) => updateTripDetail('hotels', index, 'room_type', option?.value || '')} isSearchable={false} isClearable /></div>
+                    <button type="button" onClick={() => removeTripDetail('hotels', index)} className="justify-self-start text-sm font-medium text-rose-600">Remove hotel</button>
+                  </div>
+                ))}
+              </section>
+
+              <section className="space-y-3 rounded-xl border border-slate-200 p-4 dark:border-gray-700">
+                <div className="flex items-center justify-between gap-3">
+                  <div><h4 className="font-semibold">Vehicles</h4><p className="text-xs text-gray-500">Optional transport details for this booking.</p></div>
+                  <button type="button" onClick={() => addTripDetail('vehicles', emptyVehicle)} className="text-sm font-semibold text-cyan-700">Add vehicle</button>
+                </div>
+                {form.vehicles.map((vehicle, index) => (
+                  <div key={`booking-vehicle-${index}`} className="grid gap-3 rounded-lg bg-slate-50 p-3 md:grid-cols-2 dark:bg-gray-900/50">
+                    <div><label className="mb-1 block text-xs font-medium">Vehicle reference</label><SelectField options={optionFor('vehicle_id')} isLoading={Boolean(referencesLoading.vehicle_id)} isSearchable isClearable value={optionFor('vehicle_id').find((option) => option.value === vehicle.vehicle_id) || null} onMenuOpen={() => loadReference('vehicle_id')} onChange={(option) => { updateTripDetail('vehicles', index, 'vehicle_id', option?.value || ''); updateTripDetail('vehicles', index, 'vehicle_name', option?.raw?.name || ''); updateTripDetail('vehicles', index, 'vehicle_type', option?.raw?.vehicle_type || 'ANY'); }} placeholder="Select vehicle or enter a name below" /></div>
+                    <div><label className="mb-1 block text-xs font-medium">Vehicle name *</label><input value={vehicle.vehicle_name} onChange={(event) => updateTripDetail('vehicles', index, 'vehicle_name', event.target.value)} className={inputClass} /></div>
+                    <div><label className="mb-1 block text-xs font-medium">Vehicle type</label><SelectField options={vehicleTypeOptions} value={vehicleTypeOptions.find((option) => option.value === vehicle.vehicle_type) || null} onChange={(option) => updateTripDetail('vehicles', index, 'vehicle_type', option?.value || '')} isSearchable={false} isClearable /></div>
+                    {['start_date', 'end_date'].map((key) => <div key={key}><label className="mb-1 block text-xs font-medium">{key === 'start_date' ? 'Start date' : 'End date'} *</label><CustomDatePicker value={vehicle[key]} includeTime onChange={(value) => updateTripDetail('vehicles', index, key, value)} /></div>)}
+                    <div><label className="mb-1 block text-xs font-medium">Rental minutes *</label><input type="text" inputMode="numeric" value={vehicle.rental_minutes} onChange={(event) => updateTripDetail('vehicles', index, 'rental_minutes', sanitizeNumericInput(event.target.value))} className={inputClass} /></div>
+                    <div><label className="mb-1 block text-xs font-medium">Quantity *</label><input type="text" inputMode="numeric" value={vehicle.quantity} onChange={(event) => updateTripDetail('vehicles', index, 'quantity', sanitizeNumericInput(event.target.value))} className={inputClass} /></div>
+                    <button type="button" onClick={() => removeTripDetail('vehicles', index)} className="justify-self-start text-sm font-medium text-rose-600">Remove vehicle</button>
+                  </div>
+                ))}
+              </section>
             </div>
           )}
 
