@@ -30,12 +30,37 @@ const STATUS_STYLES = {
     label: 'Pending',
     icon: Clock,
   },
+  REGISTERED: {
+    badge: 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-800',
+    label: 'Registered',
+    icon: Clock,
+  },
+  BOOKING_COMPLETED: {
+    badge: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800',
+    label: 'Booking Completed',
+    icon: CheckCircle2,
+  },
+  REWARD_ELIGIBLE: {
+    badge: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-800',
+    label: 'Reward Eligible',
+    icon: CheckCircle2,
+  },
   REWARD_APPROVED: {
     badge: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800',
     label: 'Reward Approved',
     icon: CheckCircle2,
   },
-  CANCELED: {
+  REWARD_CREDITED: {
+    badge: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800',
+    label: 'Reward Credited',
+    icon: CheckCircle2,
+  },
+  EXPIRED: {
+    badge: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700',
+    label: 'Expired',
+    icon: Clock,
+  },
+  CANCELLED: {
     badge: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-800',
     label: 'Canceled',
     icon: XCircle,
@@ -197,10 +222,16 @@ const Referrals = () => {
   const filteredReferrals = referrals.filter((item) => {
     if (!searchTerm) return true;
     const q = searchTerm.toLowerCase();
-    const referrer = [item?.referrer_name, item?.referrer_email, item?.referrer_phone].filter(Boolean).join(' ').toLowerCase();
-    const referred = [item?.referred_name, item?.referred_email, item?.referred_phone, item?.referred_user_name].filter(Boolean).join(' ').toLowerCase();
-    const code = (item?.referral_code || '').toLowerCase();
-    return referrer.includes(q) || referred.includes(q) || code.includes(q);
+    const searchableFields = [
+      item?.referrer_name,
+      item?.referrer_code,
+      item?.referrer_id,
+      item?.referred_customer_name,
+      item?.referred_customer_code,
+      item?.referred_customer_id,
+      item?.notes,
+    ];
+    return searchableFields.some((value) => String(value || '').toLowerCase().includes(q));
   });
 
   return (
@@ -243,7 +274,7 @@ const Referrals = () => {
             <input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search referrals by name, email, phone, code..."
+              placeholder="Search referrals by name, code, ID, or notes..."
               className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
             />
           </div>
@@ -436,9 +467,13 @@ const Referrals = () => {
                       <td className="px-4 py-3.5 font-medium text-gray-900 dark:text-white">
                         <div className="flex flex-col">
                           <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                            {formatCurrency(item.approved_reward_amount || item.default_reward_amount)}
+                            {formatCurrency(item.approved_reward_amount ?? item.default_reward_amount)}
                           </span>
-                          {item.approved_reward_amount && item.default_reward_amount && item.approved_reward_amount !== item.default_reward_amount && (
+                          {item.approved_reward_amount !== null &&
+                            item.approved_reward_amount !== undefined &&
+                            item.default_reward_amount !== null &&
+                            item.default_reward_amount !== undefined &&
+                            Number(item.approved_reward_amount) !== Number(item.default_reward_amount) && (
                             <span className="text-[11px] text-gray-400 line-through">
                               Def: {formatCurrency(item.default_reward_amount)}
                             </span>
@@ -662,7 +697,7 @@ const Referrals = () => {
               <div className="text-right">
                 <span className="text-xs text-gray-400 block">Reward Amount</span>
                 <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-                  {formatCurrency(detailsReferral.approved_reward_amount || detailsReferral.default_reward_amount)}
+                  {formatCurrency(detailsReferral.approved_reward_amount ?? detailsReferral.default_reward_amount)}
                 </span>
               </div>
             </div>
@@ -733,6 +768,27 @@ const Referrals = () => {
 
             {/* Timestamps and details */}
             <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+              <div className="rounded-xl border border-gray-100 dark:border-gray-800 p-3 bg-white dark:bg-gray-800">
+                <dt className="text-xs text-gray-400">Referral Sent At</dt>
+                <dd className="text-sm font-medium text-gray-800 dark:text-gray-200 mt-0.5">
+                  {formatDate(detailsReferral.referral_sent_at)}
+                </dd>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 dark:border-gray-800 p-3 bg-white dark:bg-gray-800">
+                <dt className="text-xs text-gray-400">Referral Accepted At</dt>
+                <dd className="text-sm font-medium text-gray-800 dark:text-gray-200 mt-0.5">
+                  {formatDate(detailsReferral.referral_accepted_at)}
+                </dd>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 dark:border-gray-800 p-3 bg-white dark:bg-gray-800">
+                <dt className="text-xs text-gray-400">Booking Created At</dt>
+                <dd className="text-sm font-medium text-gray-800 dark:text-gray-200 mt-0.5">
+                  {formatDate(detailsReferral.booking_created_at)}
+                </dd>
+              </div>
+
               <div className="rounded-xl border border-gray-100 dark:border-gray-800 p-3 bg-white dark:bg-gray-800">
                 <dt className="text-xs text-gray-400">Converted At</dt>
                 <dd className="text-sm font-medium text-gray-800 dark:text-gray-200 mt-0.5">
