@@ -222,7 +222,7 @@ const Profile = () => {
     { icon: User,     label: 'Full Name',         value: user?.name },
     { icon: Mail,     label: 'Email Address',      value: user?.email },
     { icon: Phone,    label: 'Mobile Contact',     value: user?.mobile },
-    { icon: Hash,     label: 'Admin Code / ID',    value: user?.user_code || user?.id, mono: true },
+    { icon: Hash,     label: 'Admin Code',          value: user?.user_code, mono: true },
     { icon: Calendar, label: 'Last Login',         value: formatDate(user?.last_login) },
     { icon: Clock,    label: 'Account Created',    value: formatDate(user?.created_at) },
   ];

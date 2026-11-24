@@ -249,9 +249,6 @@ const ReferralsConfiguration = () => {
                       <p className="font-semibold text-sm text-gray-900 dark:text-white">
                         {config.updated_by_name || 'Admin'}
                       </p>
-                      <p className="text-xs text-gray-400 font-mono">
-                        {config.updated_by || '—'}
-                      </p>
                     </div>
                   </div>
                 </div>
@@ -265,13 +262,6 @@ const ReferralsConfiguration = () => {
                   </p>
                 </div>
 
-                {/* Config ID */}
-                <div className="pt-2 border-t border-gray-100 dark:border-gray-800">
-                  <span className="text-xs text-gray-400 block mb-1">Configuration Record ID</span>
-                  <p className="text-xs font-mono text-gray-500 dark:text-gray-400 break-all">
-                    {config.id || '—'}
-                  </p>
-                </div>
               </div>
             ) : (
               <p className="text-xs text-gray-400">No configuration loaded yet.</p>

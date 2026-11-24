@@ -412,7 +412,6 @@ const VehicleManagement = () => {
                           </div>
                           <div>
                             <div className="font-semibold text-slate-900 dark:text-slate-100">{vehicle.name || 'Unnamed vehicle'}</div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400">{vehicle.id || 'No id'}</div>
                           </div>
                         </div>
                       </td>

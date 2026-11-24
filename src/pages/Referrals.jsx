@@ -691,7 +691,6 @@ const Referrals = () => {
           <div className="space-y-4 p-1">
             <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
               <div>
-                <span className="text-xs font-mono text-gray-400">ID: {detailsReferral.id}</span>
                 <div className="mt-1">{getStatusBadge(detailsReferral.status)}</div>
               </div>
               <div className="text-right">
@@ -727,9 +726,6 @@ const Referrals = () => {
                     <p className="text-xs text-gray-500 font-mono">
                       Code: {detailsReferral.referrer_code || '—'}
                     </p>
-                    <p className="text-xs text-gray-400 font-mono">
-                      ID: {detailsReferral.referrer_id || '—'}
-                    </p>
                   </div>
                 </div>
               </div>
@@ -757,9 +753,6 @@ const Referrals = () => {
                     </p>
                     <p className="text-xs text-gray-500 font-mono">
                       Code: {detailsReferral.referred_customer_code || '—'}
-                    </p>
-                    <p className="text-xs text-gray-400 font-mono">
-                      ID: {detailsReferral.referred_customer_id || '—'}
                     </p>
                   </div>
                 </div>

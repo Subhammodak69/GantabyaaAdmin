@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ManagementTable from '../component/common/ManagementTable';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   HelpCircle,
@@ -64,6 +64,33 @@ const MEAL_PLANS = [
   { value: 'AP', label: 'American Plan (All Meals)' },
 ];
 
+const HOTEL_CATEGORIES = [
+  { value: 'BUDGET', label: 'Budget' },
+  { value: 'STANDARD', label: 'Standard' },
+  { value: 'DELUXE', label: 'Deluxe' },
+  { value: 'LUXURY', label: 'Luxury' },
+];
+
+const ROOM_TYPES = [
+  { value: 'SINGLE', label: 'Single' },
+  { value: 'DOUBLE', label: 'Double' },
+  { value: 'TWIN', label: 'Twin' },
+  { value: 'TRIPLE', label: 'Triple' },
+  { value: 'FAMILY', label: 'Family' },
+  { value: 'SUITE', label: 'Suite' },
+  { value: 'DELUXE', label: 'Deluxe' },
+  { value: 'EXECUTIVE', label: 'Executive' },
+  { value: 'PRESIDENTIAL', label: 'Presidential' },
+];
+
+const VEHICLE_TYPES = [
+  { value: 'ANY', label: 'Any vehicle' },
+  { value: 'NONE', label: 'No vehicle' },
+  { value: '4-seater', label: '4-seater' },
+  { value: '6-seater', label: '6-seater' },
+  { value: 'Tempo', label: 'Tempo' },
+];
+
 const defaultCreateForm = {
   enquiry_type: 'FIXED_TOUR',
   channel: 'WEBSITE',
@@ -73,8 +100,9 @@ const defaultCreateForm = {
   destination_id: '',
   package_id: '',
   variant_id: '',
-  hotel_id: '',
-  vehicle_id: '',
+  hotel_category: '',
+  room_type: '',
+  vehicle_type: '',
   customer_id: '',
   visitor_id: '',
   travel_date: '',
@@ -120,6 +148,9 @@ const formatShortDate = (value) => {
   }
 };
 
+const getOptionLabel = (options, value) =>
+  options.find((option) => option.value === value)?.label || value || 'Not specified';
+
 const statusBadgeClasses = {
   NEW: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-300',
   IN_PROGRESS: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300',
@@ -129,8 +160,40 @@ const statusBadgeClasses = {
   CANCELLED: 'border-gray-200 bg-gray-100 text-gray-700 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-300',
 };
 
+const EnquiryCreatePageShell = ({ title, icon: Icon, onClose, footer, children }) => (
+  <div className="flex min-h-[calc(100vh-6rem)] w-full flex-col">
+    <header className="mb-2 flex items-center justify-between gap-4 border-b border-gray-200/70 px-1 py-3 dark:border-gray-700/70">
+      <div className="flex items-center gap-3">
+        {Icon && (
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/40">
+            <Icon size={18} className="text-emerald-600 dark:text-emerald-400" />
+          </span>
+        )}
+        <div>
+          <h1 className="text-lg font-semibold text-slate-800 dark:text-gray-100">{title}</h1>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Create an enquiry in a few guided steps.</p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to enquiries
+      </button>
+    </header>
+    <main className="flex-1 py-3">{children}</main>
+    <footer className="border-t border-gray-200/70 px-1 py-4 dark:border-gray-700/70">
+      {footer}
+    </footer>
+  </div>
+);
+
 const EnquiryManagement = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isCreatePage = location.pathname === '/enquiries/new';
   const [enquiries, setEnquiries] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -147,7 +210,6 @@ const EnquiryManagement = () => {
   const [channelFilter, setChannelFilter] = useState('ALL');
 
   // Modals
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -175,14 +237,9 @@ const EnquiryManagement = () => {
   const [packageVariants, setPackageVariants] = useState([]);
   const [variantsLoading, setVariantsLoading] = useState(false);
 
-  // Dynamic destination-filtered hotels
-  const [destinationHotels, setDestinationHotels] = useState([]);
-  const [hotelsLoading, setHotelsLoading] = useState(false);
-
-  // Lookup references (Destinations, Hotels, Tour Packages, Staff)
+  // Lookup references (Destinations, Tour Packages, Staff)
   const [destinations, setDestinations] = useState([]);
   const [destLoading, setDestLoading] = useState(false);
-  const [hotels, setHotels] = useState([]);
   const [packages, setPackages] = useState([]);
   const [staffAccounts, setStaffAccounts] = useState([]);
 
@@ -205,34 +262,6 @@ const EnquiryManagement = () => {
       // silently ignore
     } finally {
       setCustomersLoading(false);
-    }
-  }, []);
-
-  // Fetch Hotels filtered by Destination
-  const fetchHotelsForDestination = useCallback(async (destinationId) => {
-    if (!destinationId) {
-      setDestinationHotels([]);
-      return;
-    }
-    setHotelsLoading(true);
-    try {
-      const res = await apiCall(`/api/v1/admin/hotels?destination_id=${encodeURIComponent(destinationId)}&page=1&page_size=100`, 'GET');
-      const payload = await res.json().catch(() => ({}));
-      if (Array.isArray(payload?.data)) {
-        setDestinationHotels(
-          payload.data.map((h) => ({
-            value: h.id,
-            label: `${h.name} (${h.category || 'Hotel'})`,
-            raw: h,
-          }))
-        );
-      } else {
-        setDestinationHotels([]);
-      }
-    } catch {
-      setDestinationHotels([]);
-    } finally {
-      setHotelsLoading(false);
     }
   }, []);
 
@@ -279,17 +308,7 @@ const EnquiryManagement = () => {
         .catch(() => {})
         .finally(() => setDestLoading(false));
 
-      // 2. Hotels
-      apiCall('/api/v1/admin/hotels?page=1&page_size=100', 'GET')
-        .then((r) => r.json())
-        .then((res) => {
-          if (Array.isArray(res?.data)) {
-            setHotels(res.data.map((h) => ({ value: h.id, label: `${h.name} (${h.category || 'Hotel'})` })));
-          }
-        })
-        .catch(() => {});
-
-      // 3. Packages
+      // 2. Packages
       apiCall('/api/v1/admin/tour-packages?page=1&page_size=100', 'GET')
         .then((r) => r.json())
         .then((res) => {
@@ -305,7 +324,7 @@ const EnquiryManagement = () => {
         })
         .catch(() => {});
 
-      // 4. Staff / Accounts
+      // 3. Staff / Accounts
       apiCall('/api/v1/admin/account?page=1&page_size=100', 'GET')
         .then((r) => r.json())
         .then((res) => {
@@ -330,12 +349,6 @@ const EnquiryManagement = () => {
     destinations.forEach((d) => (map[d.value] = d.label));
     return map;
   }, [destinations]);
-
-  const hotelMap = useMemo(() => {
-    const map = {};
-    hotels.forEach((h) => (map[h.value] = h.label));
-    return map;
-  }, [hotels]);
 
   const packageMap = useMemo(() => {
     const map = {};
@@ -377,8 +390,8 @@ const EnquiryManagement = () => {
   );
 
   useEffect(() => {
-    loadEnquiries(currentPage, itemsPerPage);
-  }, [loadEnquiries, currentPage, itemsPerPage]);
+    if (!isCreatePage) loadEnquiries(currentPage, itemsPerPage);
+  }, [loadEnquiries, currentPage, itemsPerPage, isCreatePage]);
 
   useEffect(() => {
     const handleRealtimeEvent = (event) => {
@@ -435,11 +448,13 @@ const EnquiryManagement = () => {
   // Multi-step wizard state
   const [createStep, setCreateStep] = useState(1);
   const CREATE_STEPS = [
-    { id: 1, label: 'Customer' },
-    { id: 2, label: 'Channel & Type' },
-    { id: 3, label: 'Destination & Package' },
-    { id: 4, label: 'Travel & Budget' },
+    { id: 1, label: 'Customer', description: 'Contact details and account' },
+    { id: 2, label: 'Enquiry type', description: 'Type and source channel' },
+    { id: 3, label: 'Trip selection', description: 'Destination, package and variant' },
+    { id: 4, label: 'Travel plan', description: 'Dates, duration and travellers' },
+    { id: 5, label: 'Preferences', description: 'Stay, transport and budget' },
   ];
+  const currentCreateStep = CREATE_STEPS[createStep - 1];
 
   // Validate step before proceeding
   const hasContact = Boolean(
@@ -468,20 +483,24 @@ const EnquiryManagement = () => {
     if (step === 3) return tripSelectionType === 'DESTINATION'
       ? Boolean(createForm.destination_id)
       : Boolean(createForm.package_id);
-    if (step === 4) return Boolean(createForm.travel_date) && Number(createForm.adult_count) > 0;
+    if (step === 4 || step === 5) return true;
     return false;
   };
 
-  // Open Create Modal & reset states
-  const openCreateModal = () => {
+  // Open the create page and reset the wizard
+  const openCreatePage = () => {
     setCreateForm(defaultCreateForm);
     setCustomerType('SYSTEM');
     setSelectedCustomerOption(null);
     setTripSelectionType('DESTINATION');
     setPackageVariants([]);
-    setDestinationHotels([]);
     setCreateStep(1);
-    setIsCreateModalOpen(true);
+    navigate('/enquiries/new');
+  };
+
+  const closeCreatePage = () => {
+    if (saving) return;
+    navigate('/enquiries');
   };
 
   // Handle Create Enquiry Submit
@@ -504,8 +523,6 @@ const EnquiryManagement = () => {
         destination_id: createForm.destination_id || null,
         package_id: createForm.package_id || null,
         variant_id: createForm.variant_id || null,
-        hotel_id: createForm.hotel_id || null,
-        vehicle_id: createForm.vehicle_id || null,
         customer_id: createForm.customer_id || null,
         visitor_id: createForm.visitor_id || null,
         travel_date: createForm.travel_date || null,
@@ -516,6 +533,9 @@ const EnquiryManagement = () => {
         senior_count: Number(createForm.senior_count) || 0,
         room_count: Number(createForm.room_count) || 0,
         vehicle_count: Number(createForm.vehicle_count) || 0,
+        hotel_category: createForm.hotel_category || null,
+        room_type: createForm.room_type || null,
+        vehicle_type: createForm.vehicle_type || null,
         budget_min: Number(createForm.budget_min) || 0,
         budget_max: Number(createForm.budget_max) || 0,
         meal_plan: createForm.meal_plan,
@@ -530,9 +550,11 @@ const EnquiryManagement = () => {
       }
 
       toast.success(data?.message || 'Enquiry recorded successfully!');
-      setIsCreateModalOpen(false);
       setCreateForm(defaultCreateForm);
-      await loadEnquiries(currentPage, itemsPerPage);
+      setCreateStep(1);
+      setTripSelectionType('DESTINATION');
+      setPackageVariants([]);
+      navigate('/enquiries');
     } catch (error) {
       handleApiError(error, 'Unable to create enquiry');
     } finally {
@@ -601,7 +623,9 @@ const EnquiryManagement = () => {
   const labelClass = 'mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300';
 
   return (
-    <div className="space-y-3 pb-6">
+    <div className={isCreatePage ? 'w-full' : 'space-y-3 pb-6'}>
+      {!isCreatePage && (
+        <>
       {/* Header */}
       <div className="px-2 text-slate-900 dark:text-slate-100">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -629,7 +653,7 @@ const EnquiryManagement = () => {
               type="button"
               aria-label="Add enquiry"
               title="Add enquiry"
-              onClick={openCreateModal}
+              onClick={openCreatePage}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-white p-2.5 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-50 shadow-xs border border-gray-200 sm:px-4 dark:border-gray-700 dark:bg-gray-800 dark:text-indigo-400 dark:hover:bg-gray-700"
             >
               <Plus className="h-4 w-4" />
@@ -779,7 +803,7 @@ const EnquiryManagement = () => {
             {!searchTerm && statusFilter === 'ALL' && typeFilter === 'ALL' && channelFilter === 'ALL' && (
               <button
                 type="button"
-                onClick={openCreateModal}
+                onClick={openCreatePage}
                 className="mt-1 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
               >
                 Add first enquiry
@@ -804,6 +828,12 @@ const EnquiryManagement = () => {
                   const leadScore = enq.lead?.lead_score;
                   const destTitle = destMap[enq.destination_id];
                   const pkgTitle = packageMap[enq.package_id];
+                  const travelPreferences = [
+                    enq.hotel_category && getOptionLabel(HOTEL_CATEGORIES, enq.hotel_category),
+                    enq.room_type && `${getOptionLabel(ROOM_TYPES, enq.room_type)} room`,
+                    enq.vehicle_type && `${getOptionLabel(VEHICLE_TYPES, enq.vehicle_type)}${enq.vehicle_count ? ` (${enq.vehicle_count})` : ''}`,
+                    !enq.vehicle_type && enq.vehicle_count ? `${enq.vehicle_count} vehicles` : null,
+                  ].filter(Boolean).join(' · ');
 
                   return (
                     <tr
@@ -815,7 +845,7 @@ const EnquiryManagement = () => {
                       <td className="px-4 py-4">
                         <div className="flex flex-col">
                           <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                            {enq.enquiry_code || enq.id?.slice(0, 8) || 'ENQ-NEW'}
+                            {enq.enquiry_code || '—'}
                           </span>
                           <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 mt-0.5">
                             {enq.enquiry_type?.replace(/_/g, ' ') || 'Fixed Tour'}
@@ -876,6 +906,11 @@ const EnquiryManagement = () => {
                               </span>
                             ) : null}
                           </div>
+                          {travelPreferences && (
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                              {travelPreferences}
+                            </p>
+                          )}
                           {enq.message && (
                             <p className="text-xs text-gray-400 line-clamp-1 italic mt-0.5">
                               &ldquo;{enq.message}&rdquo;
@@ -947,16 +982,13 @@ const EnquiryManagement = () => {
           setCurrentPage(1);
         }}
       />
+        </>
+      )}
 
-      {/* â”€â”€ CREATE ENQUIRY MODAL â€” Step Wizard â”€â”€ */}
-      <Modal
-        isOpen={isCreateModalOpen}
-        onClose={() => {
-          if (!saving) setIsCreateModalOpen(false);
-        }}
+      {isCreatePage && <EnquiryCreatePageShell
+        onClose={closeCreatePage}
         title="Add New Customer Enquiry"
         icon={HelpCircle}
-        size="2xl"
         footer={(
           <div className="flex items-center justify-between w-full">
             <span className="text-xs text-gray-400">
@@ -974,6 +1006,7 @@ const EnquiryManagement = () => {
               )}
               {createStep < CREATE_STEPS.length ? (
                 <button
+                  key="continue"
                   type="button"
                   onClick={goNextStep}
                   disabled={!isCreateStepValid(createStep)}
@@ -983,6 +1016,7 @@ const EnquiryManagement = () => {
                 </button>
               ) : (
                 <button
+                  key="submit"
                   type="submit"
                   form="create-enquiry-form"
                   disabled={saving || !isCreateStepValid(createStep)}
@@ -995,63 +1029,94 @@ const EnquiryManagement = () => {
           </div>
         )}
       >
-        {/* â”€â”€ Step Indicator â”€â”€ */}
-        <div className="px-1 pb-4">
-          <div className="flex items-center gap-0">
-            {CREATE_STEPS.map((step, idx) => (
-              <React.Fragment key={step.id}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (step.id < createStep) setCreateStep(step.id);
-                  }}
-                  className={`flex items-center gap-1.5 px-1 ${
-                    step.id < createStep ? 'cursor-pointer' : 'cursor-default'
-                  }`}
-                >
-                  <span
-                    className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold transition-all ${
-                      step.id < createStep
-                        ? 'bg-indigo-600 text-white'
-                        : step.id === createStep
-                        ? 'bg-indigo-100 text-indigo-700 ring-2 ring-indigo-500 dark:bg-indigo-900/40 dark:text-indigo-300'
-                        : 'bg-gray-100 text-gray-400 dark:bg-gray-800'
-                    }`}
-                  >
-                    {step.id < createStep ? <Check className="h-3 w-3" /> : step.id}
-                  </span>
-                  <span
-                    className={`hidden sm:block text-xs font-semibold transition-all ${
-                      step.id === createStep
-                        ? 'text-indigo-600 dark:text-indigo-400'
-                        : step.id < createStep
-                        ? 'text-indigo-500 dark:text-indigo-500'
-                        : 'text-gray-400'
-                    }`}
-                  >
-                    {step.label}
-                  </span>
-                </button>
-                {idx < CREATE_STEPS.length - 1 && (
-                  <div
-                    className={`h-px flex-1 transition-all ${
-                      step.id < createStep ? 'bg-indigo-400' : 'bg-gray-200 dark:bg-gray-700'
-                    }`}
-                  />
-                )}
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
+        <div className="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-8">
+          <aside className="min-w-0">
+            <div className="mb-5 lg:hidden">
+              <div className="mb-2 flex items-center justify-between text-xs font-semibold text-gray-500 dark:text-gray-400">
+                <span>Step {createStep} of {CREATE_STEPS.length}</span>
+                <span>{currentCreateStep.label}</span>
+              </div>
+              <div
+                className="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+                role="progressbar"
+                aria-label="Enquiry creation progress"
+                aria-valuemin={1}
+                aria-valuemax={CREATE_STEPS.length}
+                aria-valuenow={createStep}
+              >
+                <div
+                  className="h-full rounded-full bg-indigo-600 transition-all"
+                  style={{ width: `${(createStep / CREATE_STEPS.length) * 100}%` }}
+                />
+              </div>
+            </div>
+            <nav aria-label="Enquiry creation steps" className="hidden lg:block">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Enquiry setup</p>
+              <ol className="mt-4 space-y-1">
+                {CREATE_STEPS.map((step) => {
+                  const isComplete = step.id < createStep;
+                  const isCurrent = step.id === createStep;
+                  return (
+                    <li key={step.id}>
+                      <button
+                        type="button"
+                        aria-current={isCurrent ? 'step' : undefined}
+                        disabled={!isComplete}
+                        onClick={() => setCreateStep(step.id)}
+                        className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-3 text-left transition ${
+                          isCurrent
+                            ? 'bg-indigo-50/80 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300'
+                            : isComplete
+                            ? 'text-emerald-700 hover:bg-emerald-50/70 dark:text-emerald-400 dark:hover:bg-emerald-950/20'
+                            : 'text-gray-400 dark:text-gray-500'
+                        } ${!isComplete ? 'cursor-default' : 'cursor-pointer'}`}
+                      >
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                            isCurrent
+                              ? 'bg-indigo-600 text-white'
+                              : isComplete
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                              : 'bg-gray-100 text-gray-400 dark:bg-gray-800'
+                          }`}
+                        >
+                          {isComplete ? <Check className="h-4 w-4" /> : step.id}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold">{step.label}</span>
+                          <span className="mt-0.5 block text-[11px] leading-4 text-gray-500 dark:text-gray-400">
+                            {step.description}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            </nav>
+          </aside>
 
-        <form
-          id="create-enquiry-form"
-          onSubmit={handleCreateSubmit}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && event.target.tagName !== 'TEXTAREA') event.preventDefault();
-          }}
-          className="space-y-4 p-1"
-        >
+          <section className="min-w-0">
+            <div className="mb-5 border-b border-gray-200/70 pb-4 dark:border-gray-700/70">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                Step {String(createStep).padStart(2, '0')} / {String(CREATE_STEPS.length).padStart(2, '0')}
+              </p>
+              <h2 className="mt-1 text-xl font-bold text-gray-900 dark:text-white">
+                {currentCreateStep.label}
+              </h2>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {currentCreateStep.description}
+              </p>
+            </div>
+
+            <form
+              id="create-enquiry-form"
+              onSubmit={handleCreateSubmit}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && event.target.tagName !== 'TEXTAREA') event.preventDefault();
+              }}
+              className="space-y-5"
+            >
 
           {/* â”€â”€â”€ STEP 1: Customer Information â”€â”€â”€ */}
           {createStep === 1 && (
@@ -1098,8 +1163,9 @@ const EnquiryManagement = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className={labelClass}>Customer name <span className="text-gray-400 font-normal">(optional if phone/email is provided)</span></label>
+                  <label className={labelClass}>Customer name</label>
                   <input type="text" value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} placeholder="e.g. John Doe" className={inputClass} />
+                  <p className="mt-1 text-xs text-gray-400">Optional if phone or email is provided.</p>
                 </div>
                 <div>
                   <label className={labelClass}>Phone number</label>
@@ -1166,7 +1232,7 @@ const EnquiryManagement = () => {
               <div className="mb-1">
                 <h4 className="text-sm font-bold text-gray-900 dark:text-white">Trip selection</h4>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  Select whether this enquiry is for a <strong>Destination</strong> or a specific <strong>Tour Package</strong>.
+                  Select a destination or a specific tour package.
                 </p>
               </div>
 
@@ -1174,7 +1240,7 @@ const EnquiryManagement = () => {
               <div>
                 <label className={labelClass}>Choose selection mode</label>
                 <div className="grid grid-cols-2 gap-3 mt-1">
-                  {createForm.enquiry_type === 'FIXED_TOUR' && <label
+                  <label
                     className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
                       tripSelectionType === 'DESTINATION'
                         ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/20'
@@ -1193,24 +1259,20 @@ const EnquiryManagement = () => {
                           ...prev,
                           package_id: '',
                           variant_id: '',
-                          hotel_id: '',
                         }));
                         setPackageVariants([]);
-                        if (createForm.destination_id) {
-                          fetchHotelsForDestination(createForm.destination_id);
-                        } else {
-                          setDestinationHotels([]);
-                        }
                       }}
                       className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
                     />
                     <div>
                       <span className="text-sm font-bold block">By Destination</span>
                       <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                        Choose destination & view destination hotels
+                        {createForm.enquiry_type === 'CUSTOM_TOUR'
+                          ? 'Choose where the customer wants a custom itinerary'
+                          : 'Select the destination for this enquiry'}
                       </span>
                     </div>
-                  </label>}
+                  </label>
 
                   <label
                     className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
@@ -1230,24 +1292,14 @@ const EnquiryManagement = () => {
                         setCreateForm((prev) => ({
                           ...prev,
                           destination_id: '',
-                          hotel_id: '',
                         }));
-                        if (createForm.package_id) {
-                          const pkg = packages.find((p) => p.value === createForm.package_id);
-                          const pkgDestId = pkg?.raw?.destination_id;
-                          if (pkgDestId) {
-                            fetchHotelsForDestination(pkgDestId);
-                          }
-                        } else {
-                          setDestinationHotels([]);
-                        }
                       }}
                       className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
                     />
                     <div>
                       <span className="text-sm font-bold block">By Tour Package</span>
                       <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                        Choose package, variant & package destination hotels
+                        Select a package and an optional variant
                       </span>
                     </div>
                   </label>
@@ -1272,13 +1324,7 @@ const EnquiryManagement = () => {
                           destination_id: destId,
                           package_id: '',
                           variant_id: '',
-                          hotel_id: '',
                         }));
-                        if (destId) {
-                          fetchHotelsForDestination(destId);
-                        } else {
-                          setDestinationHotels([]);
-                        }
                       }}
                       placeholder="Select a destination"
                       isClearable
@@ -1286,39 +1332,6 @@ const EnquiryManagement = () => {
                     />
                   </div>
 
-                  {/* Destination-filtered Hotel Selection */}
-                  <div>
-                    <label className={labelClass}>
-                      Preferred hotel <span className="text-gray-400 font-normal">(optional)</span>
-                      {createForm.destination_id && !hotelsLoading && (
-                        <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400">
-                          {destinationHotels.length} available in this destination
-                        </span>
-                      )}
-                    </label>
-                    <SelectField
-                      options={createForm.destination_id ? destinationHotels : hotels}
-                      isLoading={hotelsLoading}
-                      value={
-                        (createForm.destination_id ? destinationHotels : hotels).find(
-                          (h) => h.value === createForm.hotel_id
-                        ) || null
-                      }
-                      onChange={(opt) => setCreateForm({ ...createForm, hotel_id: opt?.value || '' })}
-                      placeholder={
-                        !createForm.destination_id
-                          ? 'Select destination first'
-                          : hotelsLoading
-                          ? 'Loading hotels for destination...'
-                          : destinationHotels.length === 0
-                          ? 'No hotels found for this destination'
-                          : 'Select a preferred hotel'
-                      }
-                      isDisabled={!createForm.destination_id}
-                      isClearable
-                      menuPlacement="auto"
-                    />
-                  </div>
                 </div>
               )}
 
@@ -1338,19 +1351,11 @@ const EnquiryManagement = () => {
                           ...prev,
                           package_id: pkgId,
                           variant_id: '',
-                          hotel_id: '',
                         }));
                         if (pkgId) {
                           fetchVariantsForPackage(pkgId);
-                          const pkgDestId = opt?.raw?.destination_id;
-                          if (pkgDestId) {
-                            fetchHotelsForDestination(pkgDestId);
-                          } else {
-                            setDestinationHotels([]);
-                          }
                         } else {
                           setPackageVariants([]);
-                          setDestinationHotels([]);
                         }
                       }}
                       placeholder="Select a tour package"
@@ -1422,55 +1427,22 @@ const EnquiryManagement = () => {
                     })()}
                   </div>
 
-                  {/* Package Destination-filtered Hotel Selection */}
-                  <div>
-                    <label className={labelClass}>
-                      Preferred hotel <span className="text-gray-400 font-normal">(optional)</span>
-                      {createForm.package_id && !hotelsLoading && (
-                        <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400">
-                          {destinationHotels.length} available for this package's destination
-                        </span>
-                      )}
-                    </label>
-                    <SelectField
-                      options={createForm.package_id ? destinationHotels : hotels}
-                      isLoading={hotelsLoading}
-                      value={
-                        (createForm.package_id ? destinationHotels : hotels).find(
-                          (h) => h.value === createForm.hotel_id
-                        ) || null
-                      }
-                      onChange={(opt) => setCreateForm({ ...createForm, hotel_id: opt?.value || '' })}
-                      placeholder={
-                        !createForm.package_id
-                          ? 'Select a package first'
-                          : hotelsLoading
-                          ? 'Loading hotels for destination...'
-                          : destinationHotels.length === 0
-                          ? 'No hotels found for this package destination'
-                          : 'Select a preferred hotel'
-                      }
-                      isDisabled={!createForm.package_id}
-                      isClearable
-                      menuPlacement="auto"
-                    />
-                  </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* â”€â”€â”€ STEP 4: Travel Details & Budget â”€â”€â”€ */}
+          {/* STEP 4: Travel plan */}
           {createStep === 4 && (
             <div className="space-y-4">
               <div className="mb-1">
-                <h4 className="text-sm font-bold text-gray-900 dark:text-white">Travel details & budget</h4>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Dates, travellers, rooms, and the customer's budget range.</p>
+                <h4 className="text-sm font-bold text-gray-900 dark:text-white">When and who is travelling?</h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Add a preferred date, trip duration and traveller counts.</p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className={labelClass}>Travel date <span className="text-red-500">*</span></label>
+                  <label className={labelClass}>Travel date <span className="text-gray-400 font-normal">(optional)</span></label>
                   <CustomDatePicker value={createForm.travel_date} includeTime={false} onChange={(value) => setCreateForm({ ...createForm, travel_date: value })} />
                 </div>
                 <div>
@@ -1492,7 +1464,7 @@ const EnquiryManagement = () => {
                 <label className={labelClass}>Travellers</label>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="mb-1 block text-[11px] font-medium text-gray-500">Adults <span className="text-red-500">*</span></label>
+                    <label className="mb-1 block text-[11px] font-medium text-gray-500">Adults</label>
                     <input type="text" inputMode="numeric" min="0" value={createForm.adult_count} onChange={(e) => setCreateForm({ ...createForm, adult_count: sanitizeNumericInput(e.target.value) })} className={inputClass} />
                   </div>
                   <div>
@@ -1506,14 +1478,65 @@ const EnquiryManagement = () => {
                 </div>
               </div>
 
+            </div>
+          )}
+
+          {/* STEP 5: Preferences and budget */}
+          {createStep === 5 && (
+            <div className="space-y-5">
+              <div className="mb-1">
+                <h4 className="text-sm font-bold text-gray-900 dark:text-white">Preferences and budget</h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Capture accommodation, transport and budget preferences if known.</p>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={labelClass}>Rooms</label>
                   <input type="text" inputMode="numeric" min="0" placeholder="Number of rooms" value={createForm.room_count} onChange={(e) => setCreateForm({ ...createForm, room_count: sanitizeNumericInput(e.target.value) })} className={inputClass} />
                 </div>
                 <div>
+                  <label className={labelClass}>Hotel category</label>
+                  <SelectField
+                    options={HOTEL_CATEGORIES}
+                    value={HOTEL_CATEGORIES.find((option) => option.value === createForm.hotel_category) || null}
+                    onChange={(selected) => setCreateForm({ ...createForm, hotel_category: selected?.value || '' })}
+                    isSearchable={false}
+                    isClearable
+                    placeholder="Select hotel category"
+                    menuPlacement="auto"
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Room type</label>
+                  <SelectField
+                    options={ROOM_TYPES}
+                    value={ROOM_TYPES.find((option) => option.value === createForm.room_type) || null}
+                    onChange={(selected) => setCreateForm({ ...createForm, room_type: selected?.value || '' })}
+                    isSearchable={false}
+                    isClearable
+                    placeholder="Select room type"
+                    menuPlacement="auto"
+                  />
+                </div>
+                <div>
                   <label className={labelClass}>Meal plan</label>
                   <SelectField options={MEAL_PLANS} value={MEAL_PLANS.find((m) => m.value === createForm.meal_plan) || null} onChange={(selected) => setCreateForm({ ...createForm, meal_plan: selected?.value || 'ANY' })} isSearchable={false} placeholder="Select meal plan" menuPlacement="auto" />
+                </div>
+                <div>
+                  <label className={labelClass}>Vehicle type</label>
+                  <SelectField
+                    options={VEHICLE_TYPES}
+                    value={VEHICLE_TYPES.find((option) => option.value === createForm.vehicle_type) || null}
+                    onChange={(selected) => setCreateForm({ ...createForm, vehicle_type: selected?.value || '' })}
+                    isSearchable={false}
+                    isClearable
+                    placeholder="Select vehicle type"
+                    menuPlacement="auto"
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Vehicles</label>
+                  <input type="text" inputMode="numeric" min="0" placeholder="Number of vehicles" value={createForm.vehicle_count} onChange={(e) => setCreateForm({ ...createForm, vehicle_count: sanitizeNumericInput(e.target.value) })} className={inputClass} />
                 </div>
               </div>
 
@@ -1535,8 +1558,10 @@ const EnquiryManagement = () => {
               </div>
             </div>
           )}
-        </form>
-      </Modal>
+            </form>
+          </section>
+        </div>
+      </EnquiryCreatePageShell>}
 
 
 
@@ -1757,25 +1782,38 @@ const EnquiryManagement = () => {
                   <div>
                     <dt className="text-gray-400">Accommodations</dt>
                     <dd className="font-semibold text-gray-800 dark:text-gray-200 mt-0.5">
-                      {selectedEnquiry.room_count || 0} Rooms ({selectedEnquiry.meal_plan || 'ANY'})
+                      {selectedEnquiry.room_count ?? 'Not specified'} rooms · {getOptionLabel(MEAL_PLANS, selectedEnquiry.meal_plan)}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-gray-400">Destination</dt>
                     <dd className="font-semibold text-gray-800 dark:text-gray-200 mt-0.5 truncate">
-                      {destMap[selectedEnquiry.destination_id] || selectedEnquiry.destination_id || 'Not specified'}
+                      {destMap[selectedEnquiry.destination_id] || 'Not specified'}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-gray-400">Tour package</dt>
                     <dd className="font-semibold text-gray-800 dark:text-gray-200 mt-0.5 truncate">
-                      {packageMap[selectedEnquiry.package_id] || selectedEnquiry.package_id || 'Not specified'}
+                      {packageMap[selectedEnquiry.package_id] || 'Not specified'}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-gray-400">Preferred hotel</dt>
+                    <dt className="text-gray-400">Hotel preference</dt>
                     <dd className="font-semibold text-gray-800 dark:text-gray-200 mt-0.5 truncate">
-                      {hotelMap[selectedEnquiry.hotel_id] || selectedEnquiry.hotel_id || 'Not specified'}
+                      {[
+                        selectedEnquiry.hotel_category && getOptionLabel(HOTEL_CATEGORIES, selectedEnquiry.hotel_category),
+                        selectedEnquiry.room_type && `${getOptionLabel(ROOM_TYPES, selectedEnquiry.room_type)} room`,
+                      ].filter(Boolean).join(' · ') || 'Not specified'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-gray-400">Vehicle preference</dt>
+                    <dd className="font-semibold text-gray-800 dark:text-gray-200 mt-0.5 truncate">
+                      {selectedEnquiry.vehicle_type
+                        ? `${getOptionLabel(VEHICLE_TYPES, selectedEnquiry.vehicle_type)}${selectedEnquiry.vehicle_count ? ` · ${selectedEnquiry.vehicle_count} vehicles` : ''}`
+                        : selectedEnquiry.vehicle_count
+                        ? `${selectedEnquiry.vehicle_count} vehicles`
+                        : 'Not specified'}
                     </dd>
                   </div>
                 </dl>

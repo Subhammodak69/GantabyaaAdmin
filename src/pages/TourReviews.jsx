@@ -171,7 +171,7 @@ const TourReviews = () => {
       const data = Array.isArray(payload?.data) ? payload.data : [];
       const options = data.map((customer) => ({
         value: customer.id,
-        label: [customer.name || customer.full_name, customer.mobile || customer.phone].filter(Boolean).join(' · ') || customer.id,
+        label: [customer.name || customer.full_name, customer.mobile || customer.phone].filter(Boolean).join(' · ') || 'Customer',
         customer,
       }));
       setCustomerOptions((current) => (append ? [...current, ...options] : options));
@@ -207,7 +207,7 @@ const TourReviews = () => {
     const matchingCustomer = customerOptions.find((option) => option.value === review.customer_id);
     setSelectedCustomer(matchingCustomer || (review.customer_id ? {
       value: review.customer_id,
-      label: review.name || review.customer_id,
+      label: review.name || review.customer_code || 'Customer',
       customer: {
         id: review.customer_id,
         name: review.name || '',
@@ -1003,7 +1003,6 @@ const TourReviews = () => {
                   <p className="font-semibold text-gray-900 dark:text-white">
                     {selectedCustomer.customer?.name || selectedCustomer.customer?.full_name || selectedCustomer.label.split(' · ')[0]}
                   </p>
-                  <p className="mt-0.5 break-all text-xs text-gray-500 dark:text-gray-400">ID: {selectedCustomer.value}</p>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600 dark:text-gray-300">
                     {(selectedCustomer.customer?.mobile || selectedCustomer.customer?.phone) && (
                       <span>{selectedCustomer.customer.mobile || selectedCustomer.customer.phone}</span>

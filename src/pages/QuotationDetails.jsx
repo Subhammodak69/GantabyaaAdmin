@@ -90,23 +90,23 @@ const getQuotationSummaryFields = (quotation) => [
     label: 'Customer',
     value: quotation?.customer?.name
       ? `${quotation.customer.name}${quotation.customer.mobile ? ` · ${quotation.customer.mobile}` : ''}${quotation.customer.email ? ` · ${quotation.customer.email}` : ''}`
-      : quotation?.customer_id,
+      : 'Not provided',
   },
-  { field: 'enquiry_id', label: 'Enquiry ID', value: quotation?.enquiry_id },
+  { field: 'enquiry_code', label: 'Enquiry', value: quotation?.enquiry_code || (quotation?.enquiry_id ? 'Linked enquiry' : 'Not linked') },
   {
     field: 'package',
     label: 'Package',
-    value: quotation?.package?.name || quotation?.package?.title || quotation?.tour_name || quotation?.package_id,
+    value: quotation?.package?.name || quotation?.package?.title || quotation?.tour_name || 'Not provided',
   },
   {
     field: 'variant',
     label: 'Variant',
-    value: quotation?.variant?.name || quotation?.variant?.title || quotation?.variant_id,
+    value: quotation?.variant?.name || quotation?.variant?.title || 'Not provided',
   },
   {
     field: 'destination',
     label: 'Destination',
-    value: quotation?.destination?.name || quotation?.destination?.title || quotation?.destination_id,
+    value: quotation?.destination?.name || quotation?.destination?.title || 'Not provided',
   },
   { field: 'inclusion', label: 'Inclusion', value: quotation?.inclusion },
   { field: 'exclusion', label: 'Exclusion', value: quotation?.exclusion },
@@ -469,6 +469,17 @@ const QuotationDetails = () => {
   const renderReferenceStep = () => <div className="space-y-5"><div className="grid gap-5 md:grid-cols-2"><div><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">Customer</label><input value={editForm.customer?.name || editForm.customer_name || 'Unknown customer'} readOnly className={`${inputClass} cursor-not-allowed bg-slate-100 dark:bg-gray-800`} /></div>{renderVersionField('enquiry_id')}{renderVersionField('tour_name')}{renderVersionField('travel_date')}{renderVersionField('return_date')}{renderVersionField('valid_until')}</div><div className="grid gap-3 sm:grid-cols-2"><label className={`cursor-pointer rounded-xl border p-3 text-sm font-semibold ${tripSelectionType === 'DESTINATION' ? 'border-cyan-500 bg-cyan-50 text-cyan-700' : 'border-gray-200 dark:border-gray-700'}`}><input type="radio" name="version-trip-type" checked={tripSelectionType === 'DESTINATION'} onChange={() => { setTripSelectionType('DESTINATION'); setEditForm((current) => ({ ...current, destination_id: current.destination_id, package_id: '', variant_id: '', itinerary: [] })); }} className="mr-2" />By destination</label><label className={`cursor-pointer rounded-xl border p-3 text-sm font-semibold ${tripSelectionType === 'PACKAGE' ? 'border-cyan-500 bg-cyan-50 text-cyan-700' : 'border-gray-200 dark:border-gray-700'}`}><input type="radio" name="version-trip-type" checked={tripSelectionType === 'PACKAGE'} onChange={() => { setTripSelectionType('PACKAGE'); setEditForm((current) => ({ ...current, destination_id: '', variant_id: '', itinerary: [] })); }} className="mr-2" />By package</label></div><div className="grid gap-5 md:grid-cols-2">{tripSelectionType === 'PACKAGE' ? <><div><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Package</label><SelectField options={packageOptions} isLoading={referencesLoading} isSearchable value={packageOptions.find((option) => option.value === editForm.package_id) || null} onChange={(option) => setEditForm((current) => ({ ...current, package_id: option?.value || '', variant_id: '', itinerary: [] }))} isClearable placeholder="Search package" /></div><div><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Variant</label><SelectField options={variantOptions} isLoading={variantsLoading} isDisabled={!editForm.package_id} isSearchable value={variantOptions.find((option) => option.value === editForm.variant_id) || null} onChange={(option) => { updateEdit('variant_id', option?.value || ''); loadVariantItinerary(option?.value || ''); }} isClearable placeholder="Search variant" /></div></> : <div><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Destination</label><SelectField options={destinationOptions} isLoading={referencesLoading} isSearchable value={destinationOptions.find((option) => option.value === editForm.destination_id) || null} onChange={(option) => setEditForm((current) => ({ ...current, destination_id: option?.value || '', package_id: '', variant_id: '', itinerary: [] }))} isClearable placeholder="Search destination" /></div>}</div></div>;
 
   const renderVersionField = (field) => {
+    if (field === 'enquiry_id') {
+      return (
+        <div key={field}>
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">Enquiry</label>
+          <p className={`${inputClass} text-gray-500`}>
+            {editForm.enquiry_code || (editForm.enquiry_id ? 'Linked enquiry' : 'Not linked')}
+          </p>
+        </div>
+      );
+    }
+
     const variantDateLocked = tripSelectionType === 'PACKAGE' && Boolean(editForm.variant_id) && ['travel_date', 'return_date'].includes(field);
     return <div key={field}><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">{prettyLabel(field)}</label>{variantDateLocked ? <input type="text" readOnly value={editForm[field] ? formatDate(editForm[field]) : 'No date configured for this variant'} className={`${inputClass} cursor-not-allowed opacity-70`} /> : dateFields.has(field) ? <CustomDatePicker value={editForm[field] ?? ''} onChange={(value) => updateEdit(field, value)} /> : <input type="text" inputMode={numericFields.has(field) ? 'decimal' : undefined} value={editForm[field] ?? ''} onChange={(event) => updateEdit(field, numericFields.has(field) ? numericValue(event.target.value) : event.target.value)} className={inputClass} />}</div>;
   };

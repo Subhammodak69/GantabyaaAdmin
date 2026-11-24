@@ -80,7 +80,7 @@ function App() {
             <Route path="/points" element={<PointsManagement />} />
             <Route path="/financial" element={<FinancialManagement />} />
             <Route path="/backups" element={<BackupManagement />} />
-            <Route path="/enquiries" element={<EnquiryManagement />} />
+            <Route path="/enquiries/*" element={<EnquiryManagement />} />
             <Route path="/enquiries/:enquiryId/lead" element={<LeadManagement />} />
             <Route path="/leads/:leadId" element={<LeadManagement />} />
             <Route path="/document-management" element={<DocumentManagement />} />

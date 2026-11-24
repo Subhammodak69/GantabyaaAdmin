@@ -203,45 +203,33 @@ const LeadManagement = () => {
 
   // Load Enquiry & Lead if needed
   const loadEnquiryAndLead = useCallback(async () => {
-    if (!enquiryId && !routeLeadId) return;
-    setLoadingEnquiry(true);
-    try {
-      if (enquiryId) {
-        // Fetch enquiry details
-        const res = await apiCall(`/api/v1/admin/enquiries/${enquiryId}`, 'GET');
-        const payload = await res.json().catch(() => ({}));
-        if (res.ok && payload?.data) {
-          setEnquiry(payload.data);
-          if (payload.data.lead) {
-            setLead(payload.data.lead);
-          }
-        }
-
-        // Fetch lead details for enquiry if separate endpoint exists
-        try {
-          const leadRes = await apiCall(`/api/v1/admin/enquiries/${enquiryId}/lead`, 'GET');
-          const leadPayload = await leadRes.json().catch(() => ({}));
-          if (leadRes.ok && leadPayload?.data) {
-            setLead(leadPayload.data);
-          }
-        } catch {
-          // fallback to enquiry.lead
-        }
-      }
-    } catch (error) {
-      handleApiError(error, 'Unable to load enquiry details');
-    } finally {
+    if (!enquiryId) {
       setLoadingEnquiry(false);
+      return;
     }
-  }, [enquiryId, routeLeadId]);
 
-  useEffect(() => {
-    if (!stateEnquiry) {
-      loadEnquiryAndLead();
-    } else {
+    if (stateEnquiry) {
       setEnquiry(stateEnquiry);
       setLead(stateEnquiry.lead || null);
     }
+
+    setLoadingEnquiry(!stateEnquiry);
+    try {
+      const response = await apiCall(`/api/v1/admin/enquiries/${encodeURIComponent(enquiryId)}/lead`, 'GET');
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.detail || 'Unable to load enquiry lead');
+      }
+      if (payload?.data) setLead(payload.data);
+    } catch (error) {
+      handleApiError(error, 'Unable to load enquiry lead');
+    } finally {
+      setLoadingEnquiry(false);
+    }
+  }, [enquiryId, stateEnquiry]);
+
+  useEffect(() => {
+    loadEnquiryAndLead();
   }, [stateEnquiry, loadEnquiryAndLead]);
 
   useEffect(() => {
@@ -722,16 +710,20 @@ const LeadManagement = () => {
               <div className="flex items-start justify-between">
                 <span className="text-gray-500 dark:text-gray-400">Duration</span>
                 <span className="font-semibold text-gray-900 dark:text-white">
-                  {enquiry?.travel_duration_day || 1} Days / {enquiry?.travel_duration_night || 1} Nights
+                  {enquiry?.travel_duration_day || enquiry?.travel_duration_night
+                    ? `${enquiry.travel_duration_day || 0} Days / ${enquiry.travel_duration_night || 0} Nights`
+                    : 'Not specified'}
                 </span>
               </div>
 
               <div className="flex items-start justify-between">
                 <span className="text-gray-500 dark:text-gray-400">Travelers (Pax)</span>
                 <span className="font-semibold text-gray-900 dark:text-white">
-                  {enquiry?.adult_count || 1} Adults
-                  {Number(enquiry?.child_count) > 0 ? `, ${enquiry.child_count} Children` : ''}
-                  {Number(enquiry?.senior_count) > 0 ? `, ${enquiry.senior_count} Seniors` : ''}
+                  {[
+                    Number(enquiry?.adult_count) > 0 && `${enquiry.adult_count} Adults`,
+                    Number(enquiry?.child_count) > 0 && `${enquiry.child_count} Children`,
+                    Number(enquiry?.senior_count) > 0 && `${enquiry.senior_count} Seniors`,
+                  ].filter(Boolean).join(', ') || 'Not specified'}
                 </span>
               </div>
 
@@ -748,6 +740,37 @@ const LeadManagement = () => {
                 <div className="flex items-start justify-between">
                   <span className="text-gray-500 dark:text-gray-400">Meal Plan</span>
                   <span className="font-medium text-gray-800 dark:text-gray-200">{enquiry.meal_plan}</span>
+                </div>
+              )}
+
+              {enquiry?.room_count != null && (
+                <div className="flex items-start justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Rooms</span>
+                  <span className="font-medium text-gray-800 dark:text-gray-200">{enquiry.room_count}</span>
+                </div>
+              )}
+
+              {enquiry?.hotel_category && (
+                <div className="flex items-start justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Hotel Category</span>
+                  <span className="font-medium text-gray-800 dark:text-gray-200">{enquiry.hotel_category}</span>
+                </div>
+              )}
+
+              {enquiry?.room_type && (
+                <div className="flex items-start justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Room Type</span>
+                  <span className="font-medium text-gray-800 dark:text-gray-200">{enquiry.room_type}</span>
+                </div>
+              )}
+
+              {(enquiry?.vehicle_type || Number(enquiry?.vehicle_count) > 0) && (
+                <div className="flex items-start justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Vehicle Preference</span>
+                  <span className="font-medium text-gray-800 dark:text-gray-200">
+                    {enquiry.vehicle_type || 'Vehicle'}
+                    {Number(enquiry.vehicle_count) > 0 ? ` · ${enquiry.vehicle_count} vehicles` : ''}
+                  </span>
                 </div>
               )}
 

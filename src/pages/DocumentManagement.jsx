@@ -73,7 +73,7 @@ const buildCustomerLabel = (customer) => {
   if (!customer) return '';
   const parts = [customer.name].filter(Boolean);
   if (customer.mobile) parts.push(customer.mobile);
-  return parts.join(' • ') || customer.customer_code || customer.id;
+  return parts.join(' • ') || customer.customer_code || 'Unnamed customer';
 };
 
 const DocumentManagement = () => {
@@ -275,7 +275,7 @@ const DocumentManagement = () => {
         id: booking.id,
         value: booking.id,
         customer_id: booking.customer?.id,
-        label: [booking.booking_code, booking.customer?.name].filter(Boolean).join(' • ') || booking.id,
+        label: [booking.booking_code, booking.customer?.name].filter(Boolean).join(' • ') || 'Booking',
       }));
       setBookingOptions(options);
       setBookingLoaded(true);
@@ -689,8 +689,8 @@ const DocumentManagement = () => {
                   {
                     label: documentScope === 'booking' ? 'Booking / customer' : 'Customer',
                     value: documentScope === 'booking'
-                      ? `${doc.booking_code || 'Booking'} · ${doc.customer_name || doc.customer_id || 'N/A'}`
-                      : doc.customer_name || doc.customer_id || 'N/A',
+                      ? `${doc.booking_code || 'Booking'} · ${doc.customer_name || 'N/A'}`
+                      : doc.customer_name || 'N/A',
                   },
                   { label: 'Uploaded by', value: doc.uploader_name || 'N/A' },
                   { label: 'Type', value: (doc.document_type || 'N/A').replaceAll('_', ' '), badge: true },

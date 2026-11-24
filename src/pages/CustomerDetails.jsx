@@ -437,7 +437,7 @@ const CustomerDetails = () => {
                 {customer?.name || 'Customer Details'}
               </h1>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Code: <span className="font-semibold text-slate-700 dark:text-slate-300">{customer?.customer_code || customer?.id || '—'}</span>
+                Code: <span className="font-semibold text-slate-700 dark:text-slate-300">{customer?.customer_code || '—'}</span>
                 {' · '}Joined {formatShortDate(customer?.created_at)}
               </p>
             </div>
@@ -785,7 +785,7 @@ const CustomerDetails = () => {
                           className="cursor-pointer transition-colors hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10"
                         >
                           <td className="px-4 py-3.5 font-mono text-xs font-semibold text-indigo-600 dark:text-indigo-400">
-                            {enq.enquiry_code || enq.id?.slice(0, 8) || '—'}
+                            {enq.enquiry_code || '—'}
                           </td>
 
                           <td className="px-4 py-3.5">
@@ -951,7 +951,7 @@ const CustomerDetails = () => {
                       <tr>
                         <th className="w-[18%] break-words px-1 py-3 font-semibold text-gray-700 dark:text-gray-200 sm:px-2 lg:px-4">Reviewer</th>
                         <th className="w-[12%] break-words px-1 py-3 font-semibold text-gray-700 dark:text-gray-200 sm:px-2 lg:px-4">Rating</th>
-                        <th className="w-[15%] break-words px-1 py-3 font-semibold text-gray-700 dark:text-gray-200 sm:px-2 lg:px-4">Package ID</th>
+                        <th className="w-[15%] break-words px-1 py-3 font-semibold text-gray-700 dark:text-gray-200 sm:px-2 lg:px-4">Package</th>
                         <th className="w-[13%] break-words px-1 py-3 font-semibold text-gray-700 dark:text-gray-200 sm:px-2 lg:px-4">Review</th>
                         <th className="w-[12%] break-words px-1 py-3 font-semibold text-gray-700 dark:text-gray-200 sm:px-2 lg:px-4">Gallery</th>
                         <th className="w-[12%] break-words px-1 py-3 font-semibold text-gray-700 dark:text-gray-200 sm:px-2 lg:px-4">Status</th>
@@ -977,7 +977,6 @@ const CustomerDetails = () => {
                               )}
                               <div className="min-w-0">
                                 <p className="max-w-40 truncate font-semibold text-gray-900 dark:text-white">{rev.name || 'Anonymous'}</p>
-                                <p className="max-w-40 truncate font-mono text-[10px] text-gray-400" title={rev.customer_id}>{rev.customer_id || '—'}</p>
                               </div>
                             </div>
                           </td>
@@ -991,8 +990,8 @@ const CustomerDetails = () => {
                               ))}
                             </div>
                           </td>
-                          <td className="break-all px-1 py-3.5 font-mono text-xs text-gray-600 dark:text-gray-300 sm:px-2 lg:px-4" title={rev.package_id}>
-                            {rev.package_id || '—'}
+                          <td className="break-words px-1 py-3.5 text-xs text-gray-600 dark:text-gray-300 sm:px-2 lg:px-4">
+                            {rev.package_name || rev.package_title || '—'}
                           </td>
                           <td className="px-1 py-3.5 text-xs text-gray-600 dark:text-gray-300 sm:px-2 lg:px-4">
                             <p className="line-clamp-2 break-words">{rev.review || 'No written text'}</p>
@@ -1193,7 +1192,6 @@ const CustomerDetails = () => {
                             <p className="truncate text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">{invoice.booking_code || invoice.invoice_number || 'Booking invoice'}</p>
                             <h3 className="mt-1 truncate text-sm font-bold text-gray-900 dark:text-white">{invoice.tour_name || invoice.package_name || 'Travel booking'}</h3>
                             <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-                              {invoice.booking_id && <span title={invoice.booking_id}>Booking ID: {invoice.booking_id.slice(0, 8)}…</span>}
                               {invoice.passenger_count != null && <span>{invoice.passenger_count} passengers</span>}
                             </div>
                           </div>
@@ -1368,7 +1366,7 @@ const CustomerDetails = () => {
             <div className="flex items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-800">
               <div>
                 <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                  {selectedEnquiry.enquiry_code || selectedEnquiry.id}
+                  {selectedEnquiry.enquiry_code || 'Enquiry'}
                 </span>
                 <h3 className="mt-0.5 text-base font-bold text-gray-900 dark:text-white">
                   {selectedEnquiry.subject || 'Travel Enquiry'}
@@ -1411,7 +1409,7 @@ const CustomerDetails = () => {
               </div>
               <div>
                 <dt className="text-xs text-gray-500 dark:text-gray-400">Destination</dt>
-                <dd className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">{selectedEnquiry.destination || '—'}</dd>
+                <dd className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">{selectedEnquiry.destination_name || '—'}</dd>
               </div>
               <div>
                 <dt className="text-xs text-gray-500 dark:text-gray-400">Travel Date</dt>
@@ -1425,15 +1423,31 @@ const CustomerDetails = () => {
               </div>
               <div>
                 <dt className="text-xs text-gray-500 dark:text-gray-400">Pax Count</dt>
-                <dd className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">{selectedEnquiry.pax_no || '—'}</dd>
+                <dd className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">
+                  {Number(selectedEnquiry.adult_count || 0) +
+                    Number(selectedEnquiry.child_count || 0) +
+                    Number(selectedEnquiry.senior_count || 0) || '—'}
+                </dd>
               </div>
               <div>
                 <dt className="text-xs text-gray-500 dark:text-gray-400">Rooms Required</dt>
-                <dd className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">{selectedEnquiry.no_room || '—'}</dd>
+                <dd className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">{selectedEnquiry.room_count || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-gray-500 dark:text-gray-400">Hotel Category</dt>
+                <dd className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">{selectedEnquiry.hotel_category || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-gray-500 dark:text-gray-400">Room Type</dt>
+                <dd className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">{selectedEnquiry.room_type || '—'}</dd>
               </div>
               <div>
                 <dt className="text-xs text-gray-500 dark:text-gray-400">Vehicle Type</dt>
                 <dd className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">{selectedEnquiry.vehicle_type || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-gray-500 dark:text-gray-400">Vehicle Count</dt>
+                <dd className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">{selectedEnquiry.vehicle_count || '—'}</dd>
               </div>
               <div>
                 <dt className="text-xs text-gray-500 dark:text-gray-400">Meal Plan</dt>
@@ -1532,7 +1546,6 @@ const CustomerDetails = () => {
               )}
               <div className="min-w-0">
                 <p className="font-semibold text-gray-900 dark:text-white">{selectedReview.name || 'Anonymous'}</p>
-                <p className="break-all font-mono text-[10px] text-gray-400">Customer ID: {selectedReview.customer_id || '—'}</p>
               </div>
             </div>
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
@@ -1547,8 +1560,7 @@ const CustomerDetails = () => {
               <span className="text-xs text-gray-400">{formatShortDate(selectedReview.created_at)}</span>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-gray-400">Review ID: <span className="font-mono">{selectedReview.id || '—'}</span></p>
-              <p className="text-xs text-gray-400">Package ID: <span className="font-mono">{selectedReview.package_id || '—'}</span></p>
+              <p className="text-xs text-gray-400">Package: <span className="font-mono">{selectedReview.package_name || selectedReview.package_title || '—'}</span></p>
               <p className="text-xs text-gray-400">Status: {selectedReview.is_verified ? 'Verified' : 'Unverified'} · {selectedReview.is_published ? 'Published' : 'Unpublished'}</p>
             </div>
             <div className="rounded-xl bg-slate-50 p-3.5 dark:bg-gray-800/60">

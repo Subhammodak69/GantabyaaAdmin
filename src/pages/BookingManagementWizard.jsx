@@ -206,12 +206,12 @@ const BookingManagementWizard = () => {
   };
 
   const recordLabel = (record, field) => field === 'customer_id'
-    ? [record.name || record.full_name || record.customer_name, record.mobile || record.email].filter(Boolean).join(' - ')
+    ? [record.name || record.full_name || record.customer_name, record.mobile || record.email].filter(Boolean).join(' - ') || 'Unnamed customer'
     : field === 'enquiry_id'
-      ? [record.enquiry_code || record.id, record.enquirer_name || record.name || record.customer_name, record.enquirer_phone || record.phone, record.email].filter(Boolean).join(' - ')
+      ? [record.enquiry_code, record.enquirer_name || record.name || record.customer_name, record.enquirer_phone || record.phone, record.email].filter(Boolean).join(' - ') || 'Unnamed enquiry'
       : field === 'quotation_id'
         ? [
-            record.quotation_code || record.id,
+            record.quotation_code || 'Quotation',
             record.tour_name,
             record.status,
             record.total_amount != null ? `₹${Number(record.total_amount).toLocaleString('en-IN')}` : null,
@@ -857,7 +857,7 @@ const BookingManagementWizard = () => {
                           onClick={() => navigate(`/bookings/${booking.id}`)}
                           className="text-left font-semibold text-cyan-700 hover:underline"
                         >
-                          {booking.booking_code || booking.id}
+                          {booking.booking_code || 'Booking'}
                         </button>
                         <div className="text-xs text-gray-400">{booking.booking_type || 'OFFLINE'} · {booking.source || 'OFFLINE'}</div>
                       </td>

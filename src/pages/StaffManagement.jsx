@@ -453,7 +453,7 @@ const StaffManagement = () => {
                         )}
                         <div>
                           <div className="font-semibold text-gray-900 dark:text-white">{staff.name || 'Unnamed staff'}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">{staff.user_code || staff.id}</div>
+                          {staff.user_code && <div className="text-xs text-gray-500 dark:text-gray-400">{staff.user_code}</div>}
                         </div>
                       </div>
                     </td>

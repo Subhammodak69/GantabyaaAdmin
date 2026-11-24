@@ -215,7 +215,7 @@ const BookingDetails = () => {
         <div className="flex min-w-0 items-center gap-3">
           <button type="button" onClick={() => navigate('/bookings')} className="rounded-xl border border-gray-200 p-2 dark:border-gray-700" aria-label="Back to bookings"><ArrowLeft className="h-5 w-5" /></button>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-cyan-700 dark:text-cyan-300">{booking.booking_code || booking.id}</p>
+            <p className="text-sm font-semibold text-cyan-700 dark:text-cyan-300">{booking.booking_code || 'Booking details'}</p>
             <h1 className="truncate text-2xl font-bold text-slate-900 dark:text-slate-100 sm:text-3xl">{customerName}</h1>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{[booking.destination_name, bookingDateRange].filter(Boolean).join(' - ') || 'Travel dates not set'} - {booking.status || 'TENTATIVE'}</p>
           </div>
@@ -255,7 +255,7 @@ const BookingDetails = () => {
                 <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
                   <BookingField label="Customer" value={customerName} /><BookingField label="Email" value={booking.customer?.email || booking.email} /><BookingField label="Mobile" value={booking.customer?.mobile || booking.customer_mobile || booking.mobile} /><BookingField label="Destination" value={booking.destination_name} />
                   <BookingField label="Booking code" value={booking.booking_code} /><BookingField label="Status" value={booking.status} /><BookingField label="Booking type" value={booking.booking_type} /><BookingField label="Source" value={booking.source} />
-                  <BookingField label="Departure" value={formatBookingDate(booking.departure_date)} /><BookingField label="Return" value={formatBookingDate(booking.return_date)} /><BookingField label="Package season" value={booking.package?.season} /><BookingField label="Quotation ID" value={booking.quotation_id} />
+                  <BookingField label="Departure" value={formatBookingDate(booking.departure_date)} /><BookingField label="Return" value={formatBookingDate(booking.return_date)} /><BookingField label="Package season" value={booking.package?.season} />
                   <BookingField label="Offer" value={booking.offer?.name || booking.offer?.title} /><BookingField label="Sales account" value={booking.sales_account?.name} /><BookingField label="Created by" value={booking.created_by?.name} /><BookingField label="Created" value={formatBookingDate(booking.created_at, true)} /><BookingField label="Updated" value={formatBookingDate(booking.updated_at, true)} />
                 </dl>
                 {booking.notes && <div className="mt-5 border-t border-gray-100 pt-4 dark:border-gray-700"><p className="text-xs font-medium uppercase tracking-wide text-gray-500">Notes</p><p className="mt-1 whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-100">{booking.notes}</p></div>}

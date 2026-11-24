@@ -242,7 +242,7 @@ const QuotationManagement = () => {
       if (enquiriesResponse.ok) {
         setEnquiryOptions((Array.isArray(enquiriesPayload?.data) ? enquiriesPayload.data : []).map((enquiry) => ({
           value: enquiry.id,
-          label: [enquiry.enquiry_code || enquiry.id, enquiry.enquirer_name || enquiry.name || enquiry.customer_name || 'Unnamed enquirer', enquiry.enquirer_phone || enquiry.phone || enquiry.mobile, enquiry.email, enquiry.enquiry_type, enquiry.travel_date ? new Date(enquiry.travel_date).toLocaleDateString() : null].filter(Boolean).join(' - '),
+          label: [enquiry.enquiry_code, enquiry.enquirer_name || enquiry.name || enquiry.customer_name || 'Unnamed enquirer', enquiry.enquirer_phone || enquiry.phone || enquiry.mobile, enquiry.email, enquiry.enquiry_type, enquiry.travel_date ? new Date(enquiry.travel_date).toLocaleDateString() : null].filter(Boolean).join(' - '),
           raw: enquiry,
         })));
       }
@@ -798,7 +798,7 @@ const QuotationManagement = () => {
                   <div className="truncate text-xs text-slate-500 dark:text-slate-400">{quotation.tour_name || 'Untitled tour'} · v{quotation.version || 1}</div>
                   {quotation.enquiry_id && (
                     <div className="truncate text-[11px] text-cyan-700 dark:text-cyan-400">
-                      Enquiry: {quotation.enquiry_code || quotation.enquiry_id.slice(0, 8)}
+                      Enquiry: {quotation.enquiry_code || 'Linked enquiry'}
                     </div>
                   )}
                   <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -836,7 +836,7 @@ const QuotationManagement = () => {
                         <div className="mt-1 break-words text-xs text-slate-500">{quotation.tour_name || 'Untitled tour'} · v{quotation.version || 1}</div>
                         {quotation.enquiry_id && (
                           <div className="mt-1 text-[11px] text-cyan-700 dark:text-cyan-400">
-                            Enquiry: {quotation.enquiry_code || quotation.enquiry_id.slice(0, 8)}
+                            Enquiry: {quotation.enquiry_code || 'Linked enquiry'}
                           </div>
                         )}
                       </button>
