@@ -124,6 +124,7 @@ const QuotationDetails = () => {
   const [quotation, setQuotation] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [converting, setConverting] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isCreatingVersion, setIsCreatingVersion] = useState(false);
   const [editForm, setEditForm] = useState(null);
@@ -367,6 +368,13 @@ const QuotationDetails = () => {
       toast.error('Complete or remove every component row before saving.');
       return;
     }
+    const hotelItemCount = (editForm.items || []).filter((item) => item.item_type === 'hotel').length;
+    const vehicleItemCount = (editForm.items || []).filter((item) => ['transport', 'transfer'].includes(item.item_type)).length;
+    if ((editForm.hotels || []).length > hotelItemCount || (editForm.vehicles || []).length > vehicleItemCount) {
+      toast.error('Add a hotel line item for each hotel, and a transport or transfer line item for each vehicle.');
+      setVersionStep(1);
+      return;
+    }
     setSaving(true);
     try {
       const payload = {};
@@ -416,15 +424,11 @@ const QuotationDetails = () => {
     const downloadToastId = toast.loading('Generating quotation PDF...');
     try {
       const response = await apiCall(`/api/v1/admin/quotations/${quotationId}/pdf`, 'GET');
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result?.message || result?.detail || 'Unable to generate quotation PDF');
-      const pdfValue = result?.data?.url || result?.data?.download_url || result?.data?.file_url || result?.data;
-      if (typeof pdfValue !== 'string' || !/^https?:/i.test(pdfValue)) throw new Error('Quotation PDF URL was not returned');
-
-      toast.loading('Downloading quotation PDF...', { id: downloadToastId });
-      const pdfResponse = await fetch(pdfValue);
-      if (!pdfResponse.ok) throw new Error('Unable to download quotation PDF');
-      const pdfBlob = await pdfResponse.blob();
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result?.message || result?.detail || 'Unable to generate quotation PDF');
+      }
+      const pdfBlob = await response.blob();
       const downloadUrl = URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
       link.href = downloadUrl;
@@ -436,6 +440,23 @@ const QuotationDetails = () => {
       toast.success('Quotation PDF downloaded', { id: downloadToastId });
     } catch (error) {
       toast.error(error?.message || 'Unable to generate quotation PDF', { id: downloadToastId });
+    }
+  };
+
+  const convertToBooking = async () => {
+    setConverting(true);
+    try {
+      const response = await apiCall(`/api/v1/admin/quotations/${quotationId}/convert`, 'POST', {});
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result?.message || result?.detail || 'Unable to convert quotation to booking');
+      const bookingId = result?.data?.id;
+      if (!bookingId) throw new Error('The server did not return the created booking');
+      toast.success(result?.message || 'Quotation converted to booking');
+      navigate(`/bookings/${bookingId}`);
+    } catch (error) {
+      handleApiError(error, 'Unable to convert quotation to booking');
+    } finally {
+      setConverting(false);
     }
   };
 
@@ -494,6 +515,7 @@ const QuotationDetails = () => {
   if (!quotation) return <div className="p-8 text-center"><p className="text-gray-500">Quotation not found.</p><button type="button" onClick={() => navigate('/quotations')} className="mt-4 text-sm font-semibold text-cyan-700">Back to quotations</button></div>;
 
   return <div className="space-y-5 pb-8"><div className="flex flex-col gap-3 px-2 md:flex-row md:items-center md:justify-between"><div className="flex items-center gap-3"><button type="button" onClick={() => navigate('/quotations')} className="rounded-xl border border-gray-200 p-2 text-gray-600 dark:border-gray-700 dark:text-gray-300" title="Back to quotations"><ArrowLeft className="h-5 w-5" /></button><div><p className="text-sm font-semibold text-cyan-700 dark:text-cyan-300">{quotation.quotation_code || 'Quotation'}</p><h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{quotation.tour_name || 'Untitled tour'}</h1><p className="text-sm text-slate-500">Version {quotation.version || 1} · Created {formatDate(quotation.created_at)}</p></div></div><div className="flex flex-wrap gap-2"><button type="button" onClick={loadQuotation} className="rounded-xl border border-gray-200 bg-white p-2.5 text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300" title="Refresh"><RefreshCw className="h-4 w-4" /></button><button type="button" aria-label="Edit quotation" title="Edit quotation" onClick={openEdit} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white p-2.5 text-sm font-semibold text-gray-700 sm:px-3 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"><Edit3 className="h-4 w-4" /><span className="hidden sm:inline">Edit</span></button><button type="button" aria-label="Create quotation version" title="Create quotation version" onClick={createVersion} className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 p-2.5 text-sm font-semibold text-cyan-700 sm:px-3 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-300"><Plus className="h-4 w-4" /><span className="hidden sm:inline">New version</span></button><button type="button" aria-label="Send quotation" title="Send quotation" onClick={openSendModal} className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 p-2.5 text-sm font-semibold text-white sm:px-3"><Send className="h-4 w-4" /><span className="hidden sm:inline">Send</span></button><button type="button" onClick={downloadPdf} className="rounded-xl border border-gray-200 bg-white p-2.5 text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300" title="Generate PDF"><Download className="h-4 w-4" /></button><button type="button" onClick={() => setIsDeleteOpen(true)} className="rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-rose-600 dark:border-rose-900/50 dark:bg-rose-950/20" title="Delete quotation"><Trash2 className="h-4 w-4" /></button></div></div>
+    {String(quotation.status || '').toUpperCase() === 'ACCEPTED' && <div className="flex justify-end"><button type="button" onClick={convertToBooking} disabled={converting} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"><Plus className="h-4 w-4" />{converting ? 'Converting...' : 'Convert to booking'}</button></div>}
     <div className="grid gap-4 md:grid-cols-4"><div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><p className="text-xs uppercase tracking-wide text-gray-500">Status</p><p className="mt-2 text-lg font-bold text-slate-900 dark:text-slate-100">{quotation.status || 'DRAFT'}</p></div><div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><p className="text-xs uppercase tracking-wide text-gray-500">Total amount</p><p className="mt-2 text-lg font-bold text-slate-900 dark:text-slate-100">{formatAmount(quotation.total_amount)}</p></div><div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><p className="text-xs uppercase tracking-wide text-gray-500">Travel dates</p><p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">{formatDate(quotation.travel_date)} - {formatDate(quotation.return_date)}</p></div><div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><p className="text-xs uppercase tracking-wide text-gray-500">Valid until</p><p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">{formatDate(quotation.valid_until)}</p></div></div>
     <div className="grid gap-5 xl:grid-cols-3"><div className="space-y-5 xl:col-span-2"><section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"><h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-slate-100">Quotation summary</h2><div className="grid gap-4 md:grid-cols-2">{getQuotationSummaryFields(quotation).map(({ field, label, value }) => <div key={field} className="border-b border-slate-100 pb-3 dark:border-gray-700"><p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p><p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800 dark:text-slate-200">{value || 'Not provided'}</p></div>)}</div></section><section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"><h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-slate-100">Itinerary</h2>{(quotation.itinerary || []).length ? <div className="space-y-3">{quotation.itinerary.map((day) => <div key={day.id || day.day_number} className="rounded-xl bg-slate-50 p-4 dark:bg-gray-900/50"><div className="flex items-center justify-between"><h3 className="font-semibold text-slate-900 dark:text-slate-100">Day {day.day_number}: {day.title || 'Untitled day'}</h3><span className="text-xs text-gray-500">{formatDate(day.date)}</span></div><p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{day.description || 'No description'}</p><p className="mt-2 text-xs text-gray-500">{day.overnight_location || 'No overnight location'}{day.meal_plan ? ` · ${day.meal_plan}` : ''}</p></div>)}</div> : <p className="text-sm text-gray-500">No itinerary days added.</p>}</section></div><aside className="space-y-5"><section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"><h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-slate-100">Amount breakdown</h2><div className="space-y-3 text-sm text-slate-700 dark:text-slate-300"><div className="flex justify-between"><span>Subtotal</span><strong className="text-slate-900 dark:text-slate-100">{formatAmount(quotation.subtotal)}</strong></div><div className="flex justify-between"><span>Discount</span><strong className="text-slate-900 dark:text-slate-100">- {formatAmount(quotation.discount_amount)}</strong></div><div className="flex justify-between"><span>Tax</span><strong className="text-slate-900 dark:text-slate-100">{formatAmount(quotation.tax_amount)}</strong></div><div className="flex justify-between border-t border-slate-200 pt-3 text-base dark:border-gray-700"><span className="text-slate-900 dark:text-slate-100">Total</span><strong className="text-slate-900 dark:text-slate-100">{formatAmount(quotation.total_amount)}</strong></div></div></section><section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"><h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-slate-100">Trip components</h2><div className="space-y-3 text-sm text-slate-700 dark:text-slate-200"><p><strong>{quotation.items?.length || 0}</strong> quotation items</p><p><strong>{quotation.hotels?.length || 0}</strong> hotel stays</p><p><strong>{quotation.vehicles?.length || 0}</strong> vehicle bookings</p><p><Calendar className="mr-2 inline h-4 w-4" />Updated {formatDate(quotation.updated_at)}</p></div></section></aside></div>
 

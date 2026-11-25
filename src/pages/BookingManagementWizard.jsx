@@ -15,8 +15,8 @@ import { sanitizeNumericInput } from '../utils/inputValidation';
 
 const inputClass = 'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/15 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200';
 const emptyTraveller = { full_name: '', gender: '', date_of_birth: '', mobile: '', email: '', relationship_to_customer: '', is_primary: false };
-const emptyHotel = { hotel_id: '', hotel_name: '', check_in: '', check_out: '', nights: 1, room_count: 1, room_type: '' };
-const emptyVehicle = { vehicle_id: '', vehicle_name: '', vehicle_type: 'ANY', start_date: '', end_date: '', rental_minutes: 1, quantity: 1 };
+const emptyHotel = { hotel_id: '', hotel_name: '', check_in: '', check_out: '', nights: 1, room_count: 1, room_type: '', cost_per_room: '0' };
+const emptyVehicle = { vehicle_id: '', vehicle_name: '', vehicle_type: 'ANY', start_date: '', end_date: '', rental_minutes: 1, quantity: 1, cost_per_vehicle: '0' };
 const defaultForm = { customer_id: '', enquiry_id: '', quotation_id: '', destination_id: '', package_id: '', variant_id: '', departure_id: '', departure_date: '', return_date: '', adult_count: '1', child_count: '0', senior_count: '0', total_selling_price: '0', advance_received: '0', payment_mode: 'CASH', sales_account_id: '', source: 'OFFLINE', special_notes: '', travellers: [{ ...emptyTraveller }], hotels: [], vehicles: [] };
 const getPerPersonSellingPrice = (variant) => {
   const value = variant?.selling_price || variant?.list_price || variant?.price;
@@ -630,8 +630,23 @@ const BookingManagementWizard = () => {
             relationship_to_customer: traveller.relationship_to_customer || null,
             is_primary: Boolean(traveller.is_primary),
           })),
-        items: [],
-        hotels: form.hotels.map((hotel) => ({
+        items: [
+          ...form.hotels.map((hotel) => ({
+            item_type: 'hotel',
+            name: hotel.hotel_name.trim(),
+            quantity: Number(hotel.room_count) || 1,
+            unit_price: Number(hotel.cost_per_room) || 0,
+            total_price: (Number(hotel.room_count) || 1) * (Number(hotel.cost_per_room) || 0),
+          })),
+          ...form.vehicles.map((vehicle) => ({
+            item_type: 'transport',
+            name: vehicle.vehicle_name.trim(),
+            quantity: Number(vehicle.quantity) || 1,
+            unit_price: Number(vehicle.cost_per_vehicle) || 0,
+            total_price: (Number(vehicle.quantity) || 1) * (Number(vehicle.cost_per_vehicle) || 0),
+          })),
+        ],
+        hotels: form.hotels.map(({ cost_per_room, ...hotel }) => ({
           ...hotel,
           hotel_id: hotel.hotel_id || null,
           check_in: new Date(hotel.check_in).toISOString(),
@@ -640,7 +655,7 @@ const BookingManagementWizard = () => {
           room_count: Number(hotel.room_count),
           room_type: hotel.room_type || null,
         })),
-        vehicles: form.vehicles.map((vehicle) => ({
+        vehicles: form.vehicles.map(({ cost_per_vehicle, ...vehicle }) => ({
           ...vehicle,
           vehicle_id: vehicle.vehicle_id || null,
           start_date: new Date(vehicle.start_date).toISOString(),
@@ -1127,6 +1142,7 @@ const BookingManagementWizard = () => {
                     {['check_in', 'check_out'].map((key) => <div key={key}><label className="mb-1 block text-xs font-medium">{key === 'check_in' ? 'Check in' : 'Check out'} *</label><CustomDatePicker value={hotel[key]} includeTime onChange={(value) => updateTripDetail('hotels', index, key, value)} /></div>)}
                     <div><label className="mb-1 block text-xs font-medium">Nights *</label><input type="text" inputMode="numeric" value={hotel.nights} onChange={(event) => updateTripDetail('hotels', index, 'nights', sanitizeNumericInput(event.target.value))} className={inputClass} /></div>
                     <div><label className="mb-1 block text-xs font-medium">Rooms *</label><input type="text" inputMode="numeric" value={hotel.room_count} onChange={(event) => updateTripDetail('hotels', index, 'room_count', sanitizeNumericInput(event.target.value))} className={inputClass} /></div>
+                    <div><label className="mb-1 block text-xs font-medium">Cost per room (₹)</label><input type="text" inputMode="decimal" value={hotel.cost_per_room} onChange={(event) => updateTripDetail('hotels', index, 'cost_per_room', sanitizeNumericInput(event.target.value))} className={inputClass} /></div>
                     <div><label className="mb-1 block text-xs font-medium">Room type</label><SelectField options={roomTypeOptions} value={roomTypeOptions.find((option) => option.value === hotel.room_type) || null} onChange={(option) => updateTripDetail('hotels', index, 'room_type', option?.value || '')} isSearchable={false} isClearable /></div>
                     <button type="button" onClick={() => removeTripDetail('hotels', index)} className="justify-self-start text-sm font-medium text-rose-600">Remove hotel</button>
                   </div>
@@ -1146,6 +1162,7 @@ const BookingManagementWizard = () => {
                     {['start_date', 'end_date'].map((key) => <div key={key}><label className="mb-1 block text-xs font-medium">{key === 'start_date' ? 'Start date' : 'End date'} *</label><CustomDatePicker value={vehicle[key]} includeTime onChange={(value) => updateTripDetail('vehicles', index, key, value)} /></div>)}
                     <div><label className="mb-1 block text-xs font-medium">Rental minutes *</label><input type="text" inputMode="numeric" value={vehicle.rental_minutes} onChange={(event) => updateTripDetail('vehicles', index, 'rental_minutes', sanitizeNumericInput(event.target.value))} className={inputClass} /></div>
                     <div><label className="mb-1 block text-xs font-medium">Quantity *</label><input type="text" inputMode="numeric" value={vehicle.quantity} onChange={(event) => updateTripDetail('vehicles', index, 'quantity', sanitizeNumericInput(event.target.value))} className={inputClass} /></div>
+                    <div><label className="mb-1 block text-xs font-medium">Cost per vehicle (₹)</label><input type="text" inputMode="decimal" value={vehicle.cost_per_vehicle} onChange={(event) => updateTripDetail('vehicles', index, 'cost_per_vehicle', sanitizeNumericInput(event.target.value))} className={inputClass} /></div>
                     <button type="button" onClick={() => removeTripDetail('vehicles', index)} className="justify-self-start text-sm font-medium text-rose-600">Remove vehicle</button>
                   </div>
                 ))}

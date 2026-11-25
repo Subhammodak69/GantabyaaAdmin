@@ -141,6 +141,8 @@ const QuotationManagement = () => {
   const [createStep, setCreateStep] = useState(1);
   const createSubmitRequestedRef = useRef(false);
   const [enquiryOptions, setEnquiryOptions] = useState([]);
+  const [eligibleEnquiryOptions, setEligibleEnquiryOptions] = useState([]);
+  const [eligibleEnquiriesLoading, setEligibleEnquiriesLoading] = useState(false);
   const [packageOptions, setPackageOptions] = useState([]);
   const [variantOptions, setVariantOptions] = useState([]);
   const [destinationOptions, setDestinationOptions] = useState([]);
@@ -280,7 +282,33 @@ const QuotationManagement = () => {
 
   useEffect(() => { loadReferenceOptions(); }, [loadReferenceOptions]);
 
-  const selectedEnquiry = enquiryOptions.find((option) => option.value === form.enquiry_id)?.raw || null;
+  const selectedEnquiry = eligibleEnquiryOptions.find((option) => option.value === form.enquiry_id)?.raw || null;
+  const loadEligibleEnquiryOptions = useCallback(async () => {
+    setEligibleEnquiriesLoading(true);
+    try {
+      const response = await apiCall('/api/v1/admin/quotations/enquiries?page=1&page_size=100', 'GET');
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.message || payload?.detail || 'Unable to fetch quotation enquiries');
+      const options = (Array.isArray(payload?.data) ? payload.data : []).map((enquiry) => ({
+        value: enquiry.id,
+        label: [
+          enquiry.enquiry_code,
+          enquiry.enquirer_name || enquiry.name || enquiry.customer_name || 'Unnamed enquirer',
+          enquiry.enquirer_phone || enquiry.phone || enquiry.mobile,
+          enquiry.enquirer_email || enquiry.email,
+          enquiry.enquiry_type,
+          enquiry.travel_date ? new Date(enquiry.travel_date).toLocaleDateString() : null,
+        ].filter(Boolean).join(' - '),
+        raw: enquiry,
+      }));
+      setEligibleEnquiryOptions(options);
+      return options;
+    } catch (error) {
+      handleApiError(error, 'Unable to load enquiries eligible for quotations');
+      return [];
+    } finally { setEligibleEnquiriesLoading(false); }
+  }, []);
+
   const loadVariantDetails = useCallback(async (packageId, variantId, variant = null) => {
     if (!packageId || !variantId) {
       setForm((current) => ({ ...current, itinerary: [], travel_date: '', return_date: '' }));
@@ -394,14 +422,15 @@ const QuotationManagement = () => {
   const addArrayItem = (field, template) => setForm((current) => ({ ...current, [field]: [...current[field], { ...template }] }));
   const removeArrayItem = (field, index) => setForm((current) => ({ ...current, [field]: current[field].filter((_, itemIndex) => itemIndex !== index) }));
 
-  const openCreate = () => {
+  const openCreate = async () => {
     createSubmitRequestedRef.current = false;
     setForm(defaultForm);
     setTripSelectionType('DESTINATION');
     setCreateStep(1);
     setIsCreateOpen(true);
+    const options = await loadEligibleEnquiryOptions();
     if (enquiryFilter) {
-      const match = enquiryOptions.find((opt) => opt.value === enquiryFilter);
+      const match = options.find((opt) => opt.value === enquiryFilter);
       if (match) {
         handleEnquiryChange(match);
       }
@@ -410,7 +439,6 @@ const QuotationManagement = () => {
   const closeCreate = () => { createSubmitRequestedRef.current = false; setIsCreateOpen(false); setForm(defaultForm); setTripSelectionType('DESTINATION'); setCreateStep(1); };
   const isCreateStepValid = (step) => {
     if (step === 1) return Boolean(form.enquiry_id.trim());
-    if (step === 2) return Boolean(form.tour_name.trim());
     if (step === 3) return true;
     return true;
   };
@@ -424,7 +452,7 @@ const QuotationManagement = () => {
     if (!createSubmitRequestedRef.current) return;
     createSubmitRequestedRef.current = false;
     if (createStep !== quotationSteps.length || !isCreateStepValid(quotationSteps.length)) return;
-    if (!form.enquiry_id.trim() || !form.tour_name.trim()) { toast.error('Enquiry and tour name are required'); return; }
+    if (!form.enquiry_id.trim()) { toast.error('Select an enquiry first'); return; }
     const invalidItem = form.items.find((item) => !item.name.trim() || Number(item.quantity) < 1 || Number(item.unit_price) < 0);
     const invalidHotel = form.hotels.find((hotel) => !hotel.hotel_name.trim() || !hotel.check_in || !hotel.check_out || Number(hotel.nights) < 1 || Number(hotel.room_count) < 1);
     const invalidVehicle = form.vehicles.find((vehicle) => !vehicle.vehicle_name.trim() || !vehicle.start_date || !vehicle.end_date || Number(vehicle.rental_minutes) < 1 || Number(vehicle.quantity) < 1);
@@ -433,11 +461,19 @@ const QuotationManagement = () => {
       toast.error('Complete or remove every component row before creating the quotation.');
       return;
     }
+    const hotelItemCount = form.items.filter((item) => item.item_type === 'hotel').length;
+    const vehicleItemCount = form.items.filter((item) => ['transport', 'transfer'].includes(item.item_type)).length;
+    if (form.hotels.length > hotelItemCount || form.vehicles.length > vehicleItemCount) {
+      toast.error('Add a hotel line item for each hotel, and a transport or transfer line item for each vehicle.');
+      setCreateStep(3);
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
         ...form,
-        tour_name: form.tour_name.trim(),
+        tour_name: form.tour_name.trim() || null,
+        save_as_draft: true,
         subtotal: Number(form.subtotal) || 0,
         discount_amount: Number(form.discount_amount) || 0,
         tax_amount: Number(form.tax_amount) || 0,
@@ -902,8 +938,8 @@ const QuotationManagement = () => {
         {quotationSteps.map((step) => <button key={step.id} type="button" disabled={step.id > createStep} onClick={() => step.id < createStep && setCreateStep(step.id)} className={`rounded-xl px-2 py-2 text-xs font-semibold ${step.id === createStep ? 'bg-cyan-600 text-white' : step.id < createStep ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300' : 'bg-gray-100 text-gray-400 dark:bg-gray-900'}`}>{step.id < createStep && <Check className="mr-1 inline h-3 w-3" />}{step.label}</button>)}
       </div>
       <form id="quotation-create-form" onSubmit={saveQuotation} onKeyDown={(event) => { if (event.key === 'Enter' && event.target.tagName !== 'TEXTAREA' && event.target.type !== 'submit') event.preventDefault(); }} className="space-y-5 p-1">
-        {createStep === 1 && <div className="space-y-4"><div><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Enquiry reference</h3><p className="text-sm text-gray-500">Select the enquiry. Its customer, trip details, date, and message will fill the next fields automatically.</p></div><div><label className={labelClass}>Enquiry <span className="text-rose-500">*</span></label><SelectField options={enquiryOptions} isLoading={referencesLoading} isSearchable value={enquiryOptions.find((option) => option.value === form.enquiry_id) || null} onChange={handleEnquiryChange} isClearable placeholder="Search by enquirer name, phone, email, or enquiry code" menuPlacement="auto" /></div>{selectedEnquiry && <div className="rounded-2xl border border-cyan-200 bg-cyan-50/60 p-4 dark:border-cyan-900/50 dark:bg-cyan-950/20"><div className="mb-3 flex items-center justify-between"><h4 className="font-semibold text-cyan-900 dark:text-cyan-200">Selected enquiry</h4><span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-cyan-700 dark:bg-gray-800 dark:text-cyan-300">{selectedEnquiry.status || 'NEW'}</span></div><div className="grid gap-3 text-sm sm:grid-cols-2"><div><span className="text-xs text-gray-500">Enquirer</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.enquirer_name || 'Not provided'}</p></div><div><span className="text-xs text-gray-500">Contact</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.enquirer_phone || 'Not provided'}{selectedEnquiry.enquirer_email ? ` - ${selectedEnquiry.enquirer_email}` : ''}</p></div><div><span className="text-xs text-gray-500">Enquiry type</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.enquiry_type || 'Not provided'}</p></div><div><span className="text-xs text-gray-500">Channel</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.channel || 'Not provided'}</p></div><div><span className="text-xs text-gray-500">Travel date</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.travel_date || 'Flexible'}</p></div><div><span className="text-xs text-gray-500">Travellers</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.adult_count || 0} adults, {selectedEnquiry.child_count || 0} children, {selectedEnquiry.senior_count || 0} seniors</p></div><div><span className="text-xs text-gray-500">Budget</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.budget_min || selectedEnquiry.budget_max ? `${selectedEnquiry.budget_min || 0} - ${selectedEnquiry.budget_max || 0}` : 'Not provided'}</p></div><div><span className="text-xs text-gray-500">Message</span><p className="truncate font-semibold text-gray-800 dark:text-gray-100" title={selectedEnquiry.message}>{selectedEnquiry.message || 'Not provided'}</p></div></div></div>}</div>}
-        {createStep === 2 && <div className="space-y-4"><div><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Trip details</h3><p className="text-sm text-gray-500">Choose either a destination or a package, like the enquiry form.</p></div><div className="grid gap-3 sm:grid-cols-2"><label className={`cursor-pointer rounded-xl border p-3 text-sm font-semibold ${tripSelectionType === 'DESTINATION' ? 'border-cyan-500 bg-cyan-50 text-cyan-700' : 'border-gray-200 dark:border-gray-700'}`}><input type="radio" name="quotation-trip-type" checked={tripSelectionType === 'DESTINATION'} onChange={() => { setTripSelectionType('DESTINATION'); setForm((current) => ({ ...current, destination_id: current.destination_id, package_id: '', variant_id: '', itinerary: [] })); }} className="mr-2" />By destination</label><label className={`cursor-pointer rounded-xl border p-3 text-sm font-semibold ${tripSelectionType === 'PACKAGE' ? 'border-cyan-500 bg-cyan-50 text-cyan-700' : 'border-gray-200 dark:border-gray-700'}`}><input type="radio" name="quotation-trip-type" checked={tripSelectionType === 'PACKAGE'} onChange={() => { setTripSelectionType('PACKAGE'); setForm((current) => ({ ...current, destination_id: '', variant_id: '', itinerary: [] })); }} className="mr-2" />By package</label></div><div className="grid gap-4 md:grid-cols-2">{renderInput('Tour name *', 'tour_name')}{renderInput('Travel date', 'travel_date', 'datetime-local')}{renderInput('Return date', 'return_date', 'datetime-local')}{renderInput('Valid until', 'valid_until', 'datetime-local')}{tripSelectionType === 'PACKAGE' ? <><div><label className={labelClass}>Package</label><SelectField options={packageOptions} isLoading={referencesLoading} isSearchable value={packageOptions.find((option) => option.value === form.package_id) || null}         onChange={(option) => { setForm((current) => ({ ...current, package_id: option?.value || '', variant_id: '', travel_date: '', return_date: '', inclusion: '', exclusion: '', itinerary: [] })); }} isClearable placeholder="Search package" menuPlacement="auto" /></div><div><label className={labelClass}>Variant</label><SelectField options={variantOptions} isLoading={variantsLoading} isDisabled={!form.package_id} isSearchable value={variantOptions.find((option) => option.value === form.variant_id) || null}         onChange={(option) => {
+        {createStep === 1 && <div className="space-y-4"><div><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Enquiry reference</h3><p className="text-sm text-gray-500">Select an enquiry that can receive a new quotation. Enquiries with an active quotation are excluded.</p></div><div><label className={labelClass}>Enquiry <span className="text-rose-500">*</span></label><SelectField options={eligibleEnquiryOptions} isLoading={eligibleEnquiriesLoading} isSearchable value={eligibleEnquiryOptions.find((option) => option.value === form.enquiry_id) || null} onChange={handleEnquiryChange} isClearable placeholder="Search by enquirer name, phone, email, or enquiry code" menuPlacement="auto" /></div>{selectedEnquiry && <div className="rounded-2xl border border-cyan-200 bg-cyan-50/60 p-4 dark:border-cyan-900/50 dark:bg-cyan-950/20"><div className="mb-3 flex items-center justify-between"><h4 className="font-semibold text-cyan-900 dark:text-cyan-200">Selected enquiry</h4><span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-cyan-700 dark:bg-gray-800 dark:text-cyan-300">{selectedEnquiry.status || 'NEW'}</span></div><div className="grid gap-3 text-sm sm:grid-cols-2"><div><span className="text-xs text-gray-500">Enquirer</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.enquirer_name || 'Not provided'}</p></div><div><span className="text-xs text-gray-500">Contact</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.enquirer_phone || 'Not provided'}{selectedEnquiry.enquirer_email ? ` - ${selectedEnquiry.enquirer_email}` : ''}</p></div><div><span className="text-xs text-gray-500">Enquiry type</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.enquiry_type || 'Not provided'}</p></div><div><span className="text-xs text-gray-500">Channel</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.channel || 'Not provided'}</p></div><div><span className="text-xs text-gray-500">Travel date</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.travel_date || 'Flexible'}</p></div><div><span className="text-xs text-gray-500">Travellers</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.adult_count || 0} adults, {selectedEnquiry.child_count || 0} children, {selectedEnquiry.senior_count || 0} seniors</p></div><div><span className="text-xs text-gray-500">Budget</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.budget_min || selectedEnquiry.budget_max ? `${selectedEnquiry.budget_min || 0} - ${selectedEnquiry.budget_max || 0}` : 'Not provided'}</p></div><div><span className="text-xs text-gray-500">Message</span><p className="truncate font-semibold text-gray-800 dark:text-gray-100" title={selectedEnquiry.message}>{selectedEnquiry.message || 'Not provided'}</p></div></div></div>}</div>}
+        {createStep === 2 && <div className="space-y-4"><div><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Trip details</h3><p className="text-sm text-gray-500">Choose either a destination or a package, like the enquiry form. A draft can be saved before these details are complete.</p></div><div className="grid gap-3 sm:grid-cols-2"><label className={`cursor-pointer rounded-xl border p-3 text-sm font-semibold ${tripSelectionType === 'DESTINATION' ? 'border-cyan-500 bg-cyan-50 text-cyan-700' : 'border-gray-200 dark:border-gray-700'}`}><input type="radio" name="quotation-trip-type" checked={tripSelectionType === 'DESTINATION'} onChange={() => { setTripSelectionType('DESTINATION'); setForm((current) => ({ ...current, destination_id: current.destination_id, package_id: '', variant_id: '', itinerary: [] })); }} className="mr-2" />By destination</label><label className={`cursor-pointer rounded-xl border p-3 text-sm font-semibold ${tripSelectionType === 'PACKAGE' ? 'border-cyan-500 bg-cyan-50 text-cyan-700' : 'border-gray-200 dark:border-gray-700'}`}><input type="radio" name="quotation-trip-type" checked={tripSelectionType === 'PACKAGE'} onChange={() => { setTripSelectionType('PACKAGE'); setForm((current) => ({ ...current, destination_id: '', variant_id: '', itinerary: [] })); }} className="mr-2" />By package</label></div><div className="grid gap-4 md:grid-cols-2">{renderInput('Tour name', 'tour_name')}{renderInput('Travel date', 'travel_date', 'datetime-local')}{renderInput('Return date', 'return_date', 'datetime-local')}{renderInput('Valid until', 'valid_until', 'datetime-local')}{tripSelectionType === 'PACKAGE' ? <><div><label className={labelClass}>Package</label><SelectField options={packageOptions} isLoading={referencesLoading} isSearchable value={packageOptions.find((option) => option.value === form.package_id) || null}         onChange={(option) => { setForm((current) => ({ ...current, package_id: option?.value || '', variant_id: '', travel_date: '', return_date: '', inclusion: '', exclusion: '', itinerary: [] })); }} isClearable placeholder="Search package" menuPlacement="auto" /></div><div><label className={labelClass}>Variant</label><SelectField options={variantOptions} isLoading={variantsLoading} isDisabled={!form.package_id} isSearchable value={variantOptions.find((option) => option.value === form.variant_id) || null}         onChange={(option) => {
           const variantId = option?.value || '';
           setForm((current) => ({ ...current, variant_id: variantId, inclusion: '', exclusion: '', itinerary: [] }));
           loadVariantItinerary(variantId);
