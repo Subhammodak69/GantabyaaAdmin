@@ -37,11 +37,17 @@ export function parseWhatsappEnquiry(message) {
   const packageTitle = getAvailableValue(get('package'));
   const intro = message.toLowerCase();
   const explicitType = get('enquiry type').toUpperCase().replace(/[\s-]+/g, '_');
-  const enquiryType = explicitType === 'CUSTOM_TOUR'
-    || intro.includes('plan a custom tour')
-    || intro.includes('customise this tour package')
-    ? 'CUSTOM_TOUR'
-    : 'FIXED_TOUR';
+  let enquiryType = 'FIXED_TOUR';
+  if (explicitType !== 'FIXED' && explicitType !== 'FIXED_TOUR') {
+    if (
+      explicitType === 'CUSTOM_TOUR'
+      || explicitType === 'CUSTOM'
+      || intro.includes('plan a custom tour')
+      || intro.includes('customise this tour package')
+    ) {
+      enquiryType = 'CUSTOM_TOUR';
+    }
+  }
   const source = get('enquiry source').toUpperCase().replace(/[\s-]+/g, '_');
   const channelAliases = {
     WEBSITE: 'WEBSITE',

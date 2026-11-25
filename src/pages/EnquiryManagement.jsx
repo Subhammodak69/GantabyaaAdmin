@@ -526,7 +526,7 @@ const EnquiryManagement = () => {
     const destinationOption = parsed.destination
       ? findOption(destinations, parsed.destination, (option) => [option.label])
       : null;
-    const selectionType = parsed.packageTitle ? 'PACKAGE' : 'DESTINATION';
+    const selectionType = packageOption ? 'PACKAGE' : 'DESTINATION';
     const warnings = [];
     let variantOptions = [];
     let variantOption = null;
@@ -573,7 +573,7 @@ const EnquiryManagement = () => {
     setCreateForm({
       ...defaultCreateForm,
       ...formValues,
-      destination_id: selectionType === 'DESTINATION' ? destinationOption?.value || '' : '',
+      destination_id: destinationOption?.value || packageOption?.raw?.destination_id || '',
       package_id: packageOption?.value || '',
       variant_id: variantOption?.value || '',
       meal_plan: mealOption?.value || 'ANY',

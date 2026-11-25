@@ -84,6 +84,41 @@ Package banner: https://example.com/package.png`);
     });
   });
 
+  test('extracts fixed tour details from the enquiry form message', () => {
+    const enquiry = parseWhatsappEnquiry(`Hello Gantabyaa team!
+I would like to enquire about this fixed tour package:
+Enquiry type: FIXED
+Package: CAIRO (3N) - AUSWAN - NILE CRUISE (3N) - HURGADA (2N)
+Destination: Egypt
+Variant: Cairo (3N) - Aswan - Nile Cruise (3N) - Hurghada (2N)
+Departure date: 2026-10-17
+Full name: Subham Modak
+Mobile / WhatsApp: 9547444749
+Email: modak@example.com
+Travellers: Adults 1, Children 0, Seniors 0
+Travel duration: 9 days / 8 nights
+Package banner: https://example.com/cairo.jpg
+Please share availability, pricing and booking details.`);
+
+    expect(enquiry).toMatchObject({
+      enquiry_type: 'FIXED_TOUR',
+      channel: 'WHATSAPP',
+      packageTitle: 'CAIRO (3N) - AUSWAN - NILE CRUISE (3N) - HURGADA (2N)',
+      destination: 'Egypt',
+      variant: 'Cairo (3N) - Aswan - Nile Cruise (3N) - Hurghada (2N)',
+      travel_date: '2026-10-17',
+      name: 'Subham Modak',
+      phone: '9547444749',
+      email: 'modak@example.com',
+      adult_count: 1,
+      child_count: 0,
+      senior_count: 0,
+      travel_duration_day: 9,
+      travel_duration_night: 8,
+      message: 'Package image: https://example.com/cairo.jpg',
+    });
+  });
+
   test('rejects text that does not contain recognizable enquiry fields', () => {
     expect(() => parseWhatsappEnquiry('Hello, do you have a trip available?')).toThrow(
       'No enquiry details were recognized.'
