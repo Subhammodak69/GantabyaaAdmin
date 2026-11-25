@@ -90,8 +90,10 @@ function App() {
             <Route path="/vendors" element={<VendorManagement />} />
             <Route path="/vehicles" element={<VehicleManagement />} />
             <Route path="/quotations" element={<QuotationManagement />} />
+            <Route path="/quotations/new" element={<QuotationManagement />} />
             <Route path="/quotations/:quotationId" element={<QuotationDetails />} />
             <Route path="/bookings" element={<BookingManagement />} />
+            <Route path="/bookings/new" element={<BookingManagement />} />
             <Route path="/bookings/calendar" element={<BookingCalendar />} />
             <Route path="/bookings/:bookingId" element={<BookingDetails />} />
             <Route path="/tour-packages" element={<TourPackages />} />

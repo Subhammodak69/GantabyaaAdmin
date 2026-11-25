@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import {
   ArrowLeft,
   Calendar,
+  Check,
   Download,
   Edit3,
   FileText,
@@ -14,10 +15,12 @@ import {
   Trash2,
 } from 'lucide-react';
 import Modal from '../component/common/Modal';
+import ManagementWizardPage from '../component/common/ManagementWizardPage';
 import ConfirmDeleteModal from '../component/common/ConfirmDeleteModal';
 import CustomDatePicker from '../component/common/CustomDatePicker';
 import SelectField from '../component/common/SelectField';
 import { apiCall, handleApiError } from '../utils/apiCall';
+import { downloadPdfResponse } from '../utils/downloadPdf';
 import { useEnums } from '../context/EnumsContext';
 
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-cyan-500 focus:bg-white focus:ring-4 focus:ring-cyan-500/10 read-only:cursor-not-allowed dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-200 dark:focus:bg-gray-800';
@@ -428,15 +431,7 @@ const QuotationDetails = () => {
         const result = await response.json().catch(() => ({}));
         throw new Error(result?.message || result?.detail || 'Unable to generate quotation PDF');
       }
-      const pdfBlob = await response.blob();
-      const downloadUrl = URL.createObjectURL(pdfBlob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `${quotation.quotation_code || 'quotation'}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(downloadUrl);
+      await downloadPdfResponse(response, `${quotation.quotation_code || 'quotation'}.pdf`);
       toast.success('Quotation PDF downloaded', { id: downloadToastId });
     } catch (error) {
       toast.error(error?.message || 'Unable to generate quotation PDF', { id: downloadToastId });
@@ -513,13 +508,107 @@ const QuotationDetails = () => {
 
   if (loading && !quotation) return <div className="flex min-h-[360px] items-center justify-center text-sm text-gray-500">Loading quotation...</div>;
   if (!quotation) return <div className="p-8 text-center"><p className="text-gray-500">Quotation not found.</p><button type="button" onClick={() => navigate('/quotations')} className="mt-4 text-sm font-semibold text-cyan-700">Back to quotations</button></div>;
+  if (isEditOpen && editForm) {
+    return (
+      <ManagementWizardPage
+        title={isCreatingVersion ? 'Create quotation version' : 'Edit quotation'}
+        description={`Update ${quotation.quotation_code || 'this quotation'} in a few guided steps.`}
+        icon={FileText}
+        closeLabel="Back to quotation"
+        onClose={() => !saving && setIsEditOpen(false)}
+        footer={(
+          <div className="flex w-full items-center justify-between gap-3">
+            <span className="text-xs text-gray-500">Step {versionStep + 1} of {versionSteps.length}</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setIsEditOpen(false)}
+                disabled={saving}
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300"
+              >
+                Cancel
+              </button>
+              {versionStep > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setVersionStep((current) => Math.max(0, current - 1))}
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300"
+                >
+                  <ArrowLeft className="h-4 w-4" />Back
+                </button>
+              )}
+              {versionStep < versionSteps.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setVersionStep((current) => Math.min(versionSteps.length - 1, current + 1))}
+                  disabled={saving}
+                  className="rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  form="quotation-edit-form"
+                  disabled={saving || !hasEditChanges}
+                  className="rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-50"
+                >
+                  {saving ? (isCreatingVersion ? 'Creating...' : 'Saving...') : (isCreatingVersion ? 'Create version' : 'Save changes')}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      >
+        <div className="mx-auto max-w-6xl">
+          <nav aria-label="Quotation editing steps" className="mb-6">
+            <ol className="grid gap-2 sm:grid-cols-3">
+              {versionSteps.map((step, index) => {
+                const isCurrent = index === versionStep;
+                const isComplete = index < versionStep;
+                return (
+                  <li key={step}>
+                    <button
+                      type="button"
+                      aria-current={isCurrent ? 'step' : undefined}
+                      disabled={index > versionStep}
+                      onClick={() => index < versionStep && setVersionStep(index)}
+                      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition ${
+                        isCurrent
+                          ? 'border-cyan-300 bg-cyan-50 text-cyan-700 dark:border-cyan-800 dark:bg-cyan-950/30 dark:text-cyan-300'
+                          : isComplete
+                          ? 'border-emerald-200 text-emerald-700 dark:border-emerald-900/50 dark:text-emerald-300'
+                          : 'border-gray-200 text-gray-400 dark:border-gray-700 dark:text-gray-500'
+                      }`}
+                    >
+                      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                        isCurrent ? 'bg-cyan-600 text-white' : isComplete ? 'bg-emerald-100 dark:bg-emerald-900/40' : 'bg-gray-100 dark:bg-gray-800'
+                      }`}>
+                        {isComplete ? <Check className="h-4 w-4" /> : index + 1}
+                      </span>
+                      <span className="text-sm font-semibold">{step}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          </nav>
+          <form id="quotation-edit-form" onSubmit={saveEdit} className="space-y-6">
+            <div className="rounded-2xl border border-slate-100 bg-white/60 p-4 dark:border-gray-700 dark:bg-gray-900/20">
+              {renderVersionStep()}
+            </div>
+          </form>
+        </div>
+      </ManagementWizardPage>
+    );
+  }
 
   return <div className="space-y-5 pb-8"><div className="flex flex-col gap-3 px-2 md:flex-row md:items-center md:justify-between"><div className="flex items-center gap-3"><button type="button" onClick={() => navigate('/quotations')} className="rounded-xl border border-gray-200 p-2 text-gray-600 dark:border-gray-700 dark:text-gray-300" title="Back to quotations"><ArrowLeft className="h-5 w-5" /></button><div><p className="text-sm font-semibold text-cyan-700 dark:text-cyan-300">{quotation.quotation_code || 'Quotation'}</p><h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{quotation.tour_name || 'Untitled tour'}</h1><p className="text-sm text-slate-500">Version {quotation.version || 1} · Created {formatDate(quotation.created_at)}</p></div></div><div className="flex flex-wrap gap-2"><button type="button" onClick={loadQuotation} className="rounded-xl border border-gray-200 bg-white p-2.5 text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300" title="Refresh"><RefreshCw className="h-4 w-4" /></button><button type="button" aria-label="Edit quotation" title="Edit quotation" onClick={openEdit} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white p-2.5 text-sm font-semibold text-gray-700 sm:px-3 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"><Edit3 className="h-4 w-4" /><span className="hidden sm:inline">Edit</span></button><button type="button" aria-label="Create quotation version" title="Create quotation version" onClick={createVersion} className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 p-2.5 text-sm font-semibold text-cyan-700 sm:px-3 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-300"><Plus className="h-4 w-4" /><span className="hidden sm:inline">New version</span></button><button type="button" aria-label="Send quotation" title="Send quotation" onClick={openSendModal} className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 p-2.5 text-sm font-semibold text-white sm:px-3"><Send className="h-4 w-4" /><span className="hidden sm:inline">Send</span></button><button type="button" onClick={downloadPdf} className="rounded-xl border border-gray-200 bg-white p-2.5 text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300" title="Generate PDF"><Download className="h-4 w-4" /></button><button type="button" onClick={() => setIsDeleteOpen(true)} className="rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-rose-600 dark:border-rose-900/50 dark:bg-rose-950/20" title="Delete quotation"><Trash2 className="h-4 w-4" /></button></div></div>
     {String(quotation.status || '').toUpperCase() === 'ACCEPTED' && <div className="flex justify-end"><button type="button" onClick={convertToBooking} disabled={converting} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"><Plus className="h-4 w-4" />{converting ? 'Converting...' : 'Convert to booking'}</button></div>}
     <div className="grid gap-4 md:grid-cols-4"><div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><p className="text-xs uppercase tracking-wide text-gray-500">Status</p><p className="mt-2 text-lg font-bold text-slate-900 dark:text-slate-100">{quotation.status || 'DRAFT'}</p></div><div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><p className="text-xs uppercase tracking-wide text-gray-500">Total amount</p><p className="mt-2 text-lg font-bold text-slate-900 dark:text-slate-100">{formatAmount(quotation.total_amount)}</p></div><div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><p className="text-xs uppercase tracking-wide text-gray-500">Travel dates</p><p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">{formatDate(quotation.travel_date)} - {formatDate(quotation.return_date)}</p></div><div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><p className="text-xs uppercase tracking-wide text-gray-500">Valid until</p><p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">{formatDate(quotation.valid_until)}</p></div></div>
     <div className="grid gap-5 xl:grid-cols-3"><div className="space-y-5 xl:col-span-2"><section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"><h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-slate-100">Quotation summary</h2><div className="grid gap-4 md:grid-cols-2">{getQuotationSummaryFields(quotation).map(({ field, label, value }) => <div key={field} className="border-b border-slate-100 pb-3 dark:border-gray-700"><p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p><p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800 dark:text-slate-200">{value || 'Not provided'}</p></div>)}</div></section><section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"><h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-slate-100">Itinerary</h2>{(quotation.itinerary || []).length ? <div className="space-y-3">{quotation.itinerary.map((day) => <div key={day.id || day.day_number} className="rounded-xl bg-slate-50 p-4 dark:bg-gray-900/50"><div className="flex items-center justify-between"><h3 className="font-semibold text-slate-900 dark:text-slate-100">Day {day.day_number}: {day.title || 'Untitled day'}</h3><span className="text-xs text-gray-500">{formatDate(day.date)}</span></div><p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{day.description || 'No description'}</p><p className="mt-2 text-xs text-gray-500">{day.overnight_location || 'No overnight location'}{day.meal_plan ? ` · ${day.meal_plan}` : ''}</p></div>)}</div> : <p className="text-sm text-gray-500">No itinerary days added.</p>}</section></div><aside className="space-y-5"><section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"><h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-slate-100">Amount breakdown</h2><div className="space-y-3 text-sm text-slate-700 dark:text-slate-300"><div className="flex justify-between"><span>Subtotal</span><strong className="text-slate-900 dark:text-slate-100">{formatAmount(quotation.subtotal)}</strong></div><div className="flex justify-between"><span>Discount</span><strong className="text-slate-900 dark:text-slate-100">- {formatAmount(quotation.discount_amount)}</strong></div><div className="flex justify-between"><span>Tax</span><strong className="text-slate-900 dark:text-slate-100">{formatAmount(quotation.tax_amount)}</strong></div><div className="flex justify-between border-t border-slate-200 pt-3 text-base dark:border-gray-700"><span className="text-slate-900 dark:text-slate-100">Total</span><strong className="text-slate-900 dark:text-slate-100">{formatAmount(quotation.total_amount)}</strong></div></div></section><section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"><h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-slate-100">Trip components</h2><div className="space-y-3 text-sm text-slate-700 dark:text-slate-200"><p><strong>{quotation.items?.length || 0}</strong> quotation items</p><p><strong>{quotation.hotels?.length || 0}</strong> hotel stays</p><p><strong>{quotation.vehicles?.length || 0}</strong> vehicle bookings</p><p><Calendar className="mr-2 inline h-4 w-4" />Updated {formatDate(quotation.updated_at)}</p></div></section></aside></div>
 
-    <Modal isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} title={isCreatingVersion ? 'Create quotation version' : 'Edit quotation'} icon={FileText} size="3xl" footer={<div className="flex w-full items-center justify-between gap-3"><button type="button" onClick={() => setIsEditOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:border-gray-700 dark:text-gray-300">Cancel</button><div className="flex gap-3"><button type="button" onClick={() => setVersionStep((current) => Math.max(0, current - 1))} disabled={versionStep === 0 || saving} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:text-gray-300">Back</button>{versionStep < versionSteps.length - 1 ? <button type="button" onClick={() => setVersionStep((current) => Math.min(versionSteps.length - 1, current + 1))} className="rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-cyan-700">Next</button> : <button type="submit" form="quotation-edit-form" disabled={saving} className="rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">{saving ? (isCreatingVersion ? 'Creating...' : 'Saving...') : (isCreatingVersion ? 'Create version' : 'Save changes')}</button>}</div></div>}>{editForm && <form id="quotation-edit-form" onSubmit={saveEdit} className="space-y-6 p-1"><div className="grid grid-cols-3 gap-2 rounded-2xl bg-slate-100 p-1 dark:bg-gray-900/70">{versionSteps.map((step, index) => <div key={step} className={`rounded-xl px-3 py-2.5 text-center text-xs font-semibold transition ${index === versionStep ? 'bg-white text-cyan-700 shadow-sm dark:bg-gray-800 dark:text-cyan-300' : index < versionStep ? 'text-cyan-700 dark:text-cyan-400' : 'text-slate-400 dark:text-gray-500'}`}><span className="mr-1.5">{index + 1}.</span>{step}</div>)}</div><div className="rounded-2xl border border-slate-100 bg-white/60 p-4 dark:border-gray-700 dark:bg-gray-900/20">{renderVersionStep()}</div></form>}</Modal>
     <Modal isOpen={isSendOpen} onClose={() => setIsSendOpen(false)} title="Send quotation" icon={Mail} size="sm" footer={<div className="flex justify-end gap-3"><button type="button" onClick={() => setIsSendOpen(false)} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700">Cancel</button><button type="submit" form="send-quotation-form" className="rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white">Send quotation</button></div>}><form id="send-quotation-form" onSubmit={sendQuotation} className="space-y-4"><p className="text-sm text-gray-500">The quotation will be sent to the recipient email below.</p><input type="email" required value={recipientEmail} onChange={(event) => setRecipientEmail(event.target.value)} className={inputClass} placeholder="customer@example.com" /></form></Modal>
     <ConfirmDeleteModal isOpen={isDeleteOpen} onClose={() => { if (!deleting) setIsDeleteOpen(false); }} onConfirm={deleteQuotation} confirming={deleting} itemLabel={quotation.quotation_code || 'this quotation'} title="Delete quotation" message="This quotation and its itinerary details will be permanently removed." />
   </div>;

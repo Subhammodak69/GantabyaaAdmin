@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ManagementTable from '../component/common/ManagementTable';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   ArrowRight,
@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import Modal from '../component/common/Modal';
+import ManagementWizardPage from '../component/common/ManagementWizardPage';
 import ConfirmDeleteModal from '../component/common/ConfirmDeleteModal';
 import CustomDatePicker from '../component/common/CustomDatePicker';
 import SelectField from '../component/common/SelectField';
@@ -112,6 +113,8 @@ const quotationStatusOptions = [
 
 const QuotationManagement = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isCreatePage = location.pathname === '/quotations/new';
   const [searchParams, setSearchParams] = useSearchParams();
   const initialEnquiryId = searchParams.get('enquiry_id') || '';
   const initialStatus = searchParams.get('status') || '';
@@ -125,7 +128,6 @@ const QuotationManagement = () => {
   const [deleting, setDeleting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isStatusOpen, setIsStatusOpen] = useState(false);
   const [statusTarget, setStatusTarget] = useState(null);
   const [statusForm, setStatusForm] = useState({ status: 'DRAFT' });
@@ -154,10 +156,10 @@ const QuotationManagement = () => {
   const [tripSelectionType, setTripSelectionType] = useState('DESTINATION');
 
   const quotationSteps = [
-    { id: 1, label: 'References' },
-    { id: 2, label: 'Trip details' },
-    { id: 3, label: 'Components' },
-    { id: 4, label: 'Pricing & notes' },
+    { id: 1, label: 'Enquiry', description: 'Select an enquiry that is eligible for a quotation.' },
+    { id: 2, label: 'Trip details', description: 'Choose a destination or package and set travel dates.' },
+    { id: 3, label: 'Components', description: 'Add quotation items, accommodation, transport, and itinerary.' },
+    { id: 4, label: 'Pricing & notes', description: 'Set totals, terms, inclusions, and customer-facing notes.' },
   ];
 
   const loadQuotations = useCallback(async (
@@ -189,8 +191,8 @@ const QuotationManagement = () => {
   }, [currentPage, itemsPerPage, enquiryFilter, statusFilter, searchTerm]);
 
   useEffect(() => {
-    loadQuotations(currentPage, itemsPerPage, enquiryFilter, statusFilter, searchTerm);
-  }, [loadQuotations, currentPage, itemsPerPage, enquiryFilter, statusFilter, searchTerm]);
+    if (!isCreatePage) loadQuotations(currentPage, itemsPerPage, enquiryFilter, statusFilter, searchTerm);
+  }, [loadQuotations, currentPage, itemsPerPage, enquiryFilter, statusFilter, searchTerm, isCreatePage]);
 
   const handleEnquiryFilterChange = (option) => {
     const val = option?.value || '';
@@ -380,6 +382,17 @@ const QuotationManagement = () => {
   };
 
   useEffect(() => {
+    if (!isCreatePage) return undefined;
+    let isCurrent = true;
+    loadEligibleEnquiryOptions().then((options) => {
+      if (!isCurrent || !enquiryFilter) return;
+      const match = options.find((option) => option.value === enquiryFilter);
+      if (match) handleEnquiryChange(match);
+    });
+    return () => { isCurrent = false; };
+  }, [isCreatePage, enquiryFilter, loadEligibleEnquiryOptions]);
+
+  useEffect(() => {
     if (!form.package_id) {
       setVariantOptions([]);
       return undefined;
@@ -422,21 +435,20 @@ const QuotationManagement = () => {
   const addArrayItem = (field, template) => setForm((current) => ({ ...current, [field]: [...current[field], { ...template }] }));
   const removeArrayItem = (field, index) => setForm((current) => ({ ...current, [field]: current[field].filter((_, itemIndex) => itemIndex !== index) }));
 
-  const openCreate = async () => {
+  const openCreate = () => {
     createSubmitRequestedRef.current = false;
     setForm(defaultForm);
     setTripSelectionType('DESTINATION');
     setCreateStep(1);
-    setIsCreateOpen(true);
-    const options = await loadEligibleEnquiryOptions();
-    if (enquiryFilter) {
-      const match = options.find((opt) => opt.value === enquiryFilter);
-      if (match) {
-        handleEnquiryChange(match);
-      }
-    }
+    navigate(`/quotations/new${location.search}`);
   };
-  const closeCreate = () => { createSubmitRequestedRef.current = false; setIsCreateOpen(false); setForm(defaultForm); setTripSelectionType('DESTINATION'); setCreateStep(1); };
+  const closeCreate = () => {
+    createSubmitRequestedRef.current = false;
+    setForm(defaultForm);
+    setTripSelectionType('DESTINATION');
+    setCreateStep(1);
+    navigate(`/quotations${location.search}`);
+  };
   const isCreateStepValid = (step) => {
     if (step === 1) return Boolean(form.enquiry_id.trim());
     if (step === 3) return true;
@@ -492,7 +504,7 @@ const QuotationManagement = () => {
       const created = result?.data;
       toast.success(result?.message || 'Quotation created successfully');
       closeCreate();
-      if (created?.id) navigate(`/quotations/${created.id}`); else await loadQuotations(currentPage, itemsPerPage);
+      if (created?.id) navigate(`/quotations/${created.id}`);
     } catch (error) { handleApiError(error, 'Unable to create quotation'); } finally { setSaving(false); }
   };
 
@@ -615,6 +627,7 @@ const QuotationManagement = () => {
   const selectedFilterEnquiry = enquiryOptions.find((opt) => opt.value === enquiryFilter);
 
   return <div className="space-y-5 pb-8">
+    {!isCreatePage && <>
     <div className="flex flex-col gap-3 px-2 md:flex-row md:items-end md:justify-between">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Quotations</h1>
@@ -846,7 +859,7 @@ const QuotationManagement = () => {
                 <ActionMenu actions={[
                   { label: 'Open quotation', icon: <ArrowRight className="h-4 w-4" />, onClick: () => navigate(`/quotations/${quotation.id}`) },
                   { label: 'Update status', icon: <Pencil className="h-4 w-4" />, onClick: () => openStatusModal(quotation) },
-                  { label: 'Create booking', icon: <Plus className="h-4 w-4" />, onClick: () => navigate('/bookings', { state: { quotation_id: quotation.id, enquiry_id: quotation.enquiry_id, customer_id: quotation.customer_id } }) },
+                  { label: 'Create booking', icon: <Plus className="h-4 w-4" />, onClick: () => navigate('/bookings/new', { state: { quotation_id: quotation.id, enquiry_id: quotation.enquiry_id, customer_id: quotation.customer_id } }) },
                   { label: 'Delete quotation', icon: <Trash2 className="h-4 w-4" />, onClick: () => { setDeleteTarget(quotation); setIsDeleteOpen(true); }, className: 'text-rose-600 dark:text-rose-400' }
                 ]} />
               </div>
@@ -891,7 +904,7 @@ const QuotationManagement = () => {
                       <ActionMenu actions={[
                         { label: 'Open quotation', icon: <ArrowRight className="h-4 w-4" />, onClick: () => navigate(`/quotations/${quotation.id}`) },
                         { label: 'Update status', icon: <Pencil className="h-4 w-4" />, onClick: () => openStatusModal(quotation) },
-                        { label: 'Create booking', icon: <Plus className="h-4 w-4" />, onClick: () => navigate('/bookings', { state: { quotation_id: quotation.id, enquiry_id: quotation.enquiry_id, customer_id: quotation.customer_id } }) },
+                        { label: 'Create booking', icon: <Plus className="h-4 w-4" />, onClick: () => navigate('/bookings/new', { state: { quotation_id: quotation.id, enquiry_id: quotation.enquiry_id, customer_id: quotation.customer_id } }) },
                         { label: 'Delete quotation', icon: <Trash2 className="h-4 w-4" />, onClick: () => { setDeleteTarget(quotation); setIsDeleteOpen(true); }, className: 'text-rose-600 dark:text-rose-400' }
                       ]} />
                     </td>
@@ -917,13 +930,17 @@ const QuotationManagement = () => {
         }}
       />
     )}
+    </>}
 
-    <Modal
-      isOpen={isCreateOpen}
-      onClose={() => { if (!saving) closeCreate(); }}
+    {isCreatePage && <ManagementWizardPage
       title="New quotation"
+      description="Build a customer-ready quotation in a few guided steps."
       icon={FileText}
-      size="3xl"
+      closeLabel="Back to quotations"
+      steps={quotationSteps}
+      currentStep={createStep}
+      onStepChange={setCreateStep}
+      onClose={() => !saving && closeCreate()}
       footer={(
         <div className="flex w-full items-center justify-between gap-3">
           <span className="text-xs text-gray-500">Step {createStep} of {quotationSteps.length}</span>
@@ -934,9 +951,6 @@ const QuotationManagement = () => {
         </div>
       )}
     >
-      <div className="mb-5 grid grid-cols-4 gap-2">
-        {quotationSteps.map((step) => <button key={step.id} type="button" disabled={step.id > createStep} onClick={() => step.id < createStep && setCreateStep(step.id)} className={`rounded-xl px-2 py-2 text-xs font-semibold ${step.id === createStep ? 'bg-cyan-600 text-white' : step.id < createStep ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300' : 'bg-gray-100 text-gray-400 dark:bg-gray-900'}`}>{step.id < createStep && <Check className="mr-1 inline h-3 w-3" />}{step.label}</button>)}
-      </div>
       <form id="quotation-create-form" onSubmit={saveQuotation} onKeyDown={(event) => { if (event.key === 'Enter' && event.target.tagName !== 'TEXTAREA' && event.target.type !== 'submit') event.preventDefault(); }} className="space-y-5 p-1">
         {createStep === 1 && <div className="space-y-4"><div><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Enquiry reference</h3><p className="text-sm text-gray-500">Select an enquiry that can receive a new quotation. Enquiries with an active quotation are excluded.</p></div><div><label className={labelClass}>Enquiry <span className="text-rose-500">*</span></label><SelectField options={eligibleEnquiryOptions} isLoading={eligibleEnquiriesLoading} isSearchable value={eligibleEnquiryOptions.find((option) => option.value === form.enquiry_id) || null} onChange={handleEnquiryChange} isClearable placeholder="Search by enquirer name, phone, email, or enquiry code" menuPlacement="auto" /></div>{selectedEnquiry && <div className="rounded-2xl border border-cyan-200 bg-cyan-50/60 p-4 dark:border-cyan-900/50 dark:bg-cyan-950/20"><div className="mb-3 flex items-center justify-between"><h4 className="font-semibold text-cyan-900 dark:text-cyan-200">Selected enquiry</h4><span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-cyan-700 dark:bg-gray-800 dark:text-cyan-300">{selectedEnquiry.status || 'NEW'}</span></div><div className="grid gap-3 text-sm sm:grid-cols-2"><div><span className="text-xs text-gray-500">Enquirer</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.enquirer_name || 'Not provided'}</p></div><div><span className="text-xs text-gray-500">Contact</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.enquirer_phone || 'Not provided'}{selectedEnquiry.enquirer_email ? ` - ${selectedEnquiry.enquirer_email}` : ''}</p></div><div><span className="text-xs text-gray-500">Enquiry type</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.enquiry_type || 'Not provided'}</p></div><div><span className="text-xs text-gray-500">Channel</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.channel || 'Not provided'}</p></div><div><span className="text-xs text-gray-500">Travel date</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.travel_date || 'Flexible'}</p></div><div><span className="text-xs text-gray-500">Travellers</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.adult_count || 0} adults, {selectedEnquiry.child_count || 0} children, {selectedEnquiry.senior_count || 0} seniors</p></div><div><span className="text-xs text-gray-500">Budget</span><p className="font-semibold text-gray-800 dark:text-gray-100">{selectedEnquiry.budget_min || selectedEnquiry.budget_max ? `${selectedEnquiry.budget_min || 0} - ${selectedEnquiry.budget_max || 0}` : 'Not provided'}</p></div><div><span className="text-xs text-gray-500">Message</span><p className="truncate font-semibold text-gray-800 dark:text-gray-100" title={selectedEnquiry.message}>{selectedEnquiry.message || 'Not provided'}</p></div></div></div>}</div>}
         {createStep === 2 && <div className="space-y-4"><div><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Trip details</h3><p className="text-sm text-gray-500">Choose either a destination or a package, like the enquiry form. A draft can be saved before these details are complete.</p></div><div className="grid gap-3 sm:grid-cols-2"><label className={`cursor-pointer rounded-xl border p-3 text-sm font-semibold ${tripSelectionType === 'DESTINATION' ? 'border-cyan-500 bg-cyan-50 text-cyan-700' : 'border-gray-200 dark:border-gray-700'}`}><input type="radio" name="quotation-trip-type" checked={tripSelectionType === 'DESTINATION'} onChange={() => { setTripSelectionType('DESTINATION'); setForm((current) => ({ ...current, destination_id: current.destination_id, package_id: '', variant_id: '', itinerary: [] })); }} className="mr-2" />By destination</label><label className={`cursor-pointer rounded-xl border p-3 text-sm font-semibold ${tripSelectionType === 'PACKAGE' ? 'border-cyan-500 bg-cyan-50 text-cyan-700' : 'border-gray-200 dark:border-gray-700'}`}><input type="radio" name="quotation-trip-type" checked={tripSelectionType === 'PACKAGE'} onChange={() => { setTripSelectionType('PACKAGE'); setForm((current) => ({ ...current, destination_id: '', variant_id: '', itinerary: [] })); }} className="mr-2" />By package</label></div><div className="grid gap-4 md:grid-cols-2">{renderInput('Tour name', 'tour_name')}{renderInput('Travel date', 'travel_date', 'datetime-local')}{renderInput('Return date', 'return_date', 'datetime-local')}{renderInput('Valid until', 'valid_until', 'datetime-local')}{tripSelectionType === 'PACKAGE' ? <><div><label className={labelClass}>Package</label><SelectField options={packageOptions} isLoading={referencesLoading} isSearchable value={packageOptions.find((option) => option.value === form.package_id) || null}         onChange={(option) => { setForm((current) => ({ ...current, package_id: option?.value || '', variant_id: '', travel_date: '', return_date: '', inclusion: '', exclusion: '', itinerary: [] })); }} isClearable placeholder="Search package" menuPlacement="auto" /></div><div><label className={labelClass}>Variant</label><SelectField options={variantOptions} isLoading={variantsLoading} isDisabled={!form.package_id} isSearchable value={variantOptions.find((option) => option.value === form.variant_id) || null}         onChange={(option) => {
@@ -947,7 +961,7 @@ const QuotationManagement = () => {
         {createStep === 3 && <div className="space-y-5"><div><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Quotation components</h3><p className="text-sm text-gray-500">Add line items, accommodation, transport, and the itinerary.</p></div>{renderNestedRows('items', 'Quotation items', emptyLineItem, [['item_type', 'Item type', 'select'], ['name', 'Name'], ['description', 'Description'], ['quantity', 'Quantity', 'number'], ['unit_price', 'Unit price', 'number'], ['total_price', 'Total price', 'calculated']])}{renderHotelRows()}{renderVehicleRows()}{renderItineraryRows()}</div>}
         {createStep === 4 && <div className="space-y-4"><div><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Pricing and notes</h3><p className="text-sm text-gray-500">Set the quotation totals and customer-facing content.</p></div><div className="grid gap-4 md:grid-cols-4">{renderInput('Subtotal', 'subtotal', 'number')}{renderInput('Discount', 'discount_amount', 'number')}{renderInput('Tax', 'tax_amount', 'number')}{renderInput('Total amount', 'total_amount', 'number')}</div><div className="grid gap-4 md:grid-cols-2">{['terms_and_conditions', 'important_notes', 'inclusion', 'exclusion'].map((field) => <div key={field}><label className={labelClass}>{field.replaceAll('_', ' ')}</label><textarea value={form[field]} onChange={(event) => updateForm(field, event.target.value)} className={`${inputClass} min-h-[100px]`} /></div>)}</div></div>}
       </form>
-    </Modal>
+    </ManagementWizardPage>}
     <ConfirmDeleteModal isOpen={isDeleteOpen} onClose={() => { if (!deleting) { setIsDeleteOpen(false); setDeleteTarget(null); } }} onConfirm={confirmDelete} confirming={deleting} itemLabel={deleteTarget?.quotation_code || 'this quotation'} title="Delete quotation" message="This quotation and its itinerary details will be permanently removed." />
   </div>;
 };

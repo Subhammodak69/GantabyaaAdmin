@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { ArrowLeft, ArrowRight, CalendarDays, Check, Eye, FileText, Filter, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import Modal from '../component/common/Modal';
+import ManagementWizardPage from '../component/common/ManagementWizardPage';
 import ConfirmDeleteModal from '../component/common/ConfirmDeleteModal';
 import CustomDatePicker from '../component/common/CustomDatePicker';
 import Pagination from '../component/common/PaginationComponent';
@@ -46,7 +47,12 @@ const statusClasses = {
   CANCELLED: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300',
   REFUNDED: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
 };
-const steps = [{ id: 1, label: 'References' }, { id: 2, label: 'Trip & Dates' }, { id: 3, label: 'Commercial' }, { id: 4, label: 'Travellers' }];
+const steps = [
+  { id: 1, label: 'References', description: 'Choose a customer, enquiry, quotation, and trip inventory.' },
+  { id: 2, label: 'Trip & Dates', description: 'Set travel dates, passenger counts, hotels, and transport.' },
+  { id: 3, label: 'Commercial', description: 'Enter the selling price, payment details, and booking source.' },
+  { id: 4, label: 'Travellers', description: 'Add traveller details and select the primary traveller.' },
+];
 const referenceEndpoints = {
   customer_id: '/api/v1/admin/customers?page=1&page_size=100',
   enquiry_id: '/api/v1/admin/enquiries?page=1&page_size=100',
@@ -61,6 +67,7 @@ const referenceEndpoints = {
 const BookingManagementWizard = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const isCreatePage = location.pathname === '/bookings/new';
   const { getEnumOptions } = useEnums();
   const apiBookingSources = getEnumOptions('BookingSource');
   const bookingSourceOptions = apiBookingSources.length ? apiBookingSources : fallbackEnumOptions(bookingSources);
@@ -76,7 +83,6 @@ const BookingManagementWizard = () => {
   const createSubmitRequested = useRef(false);
   const [customerSource, setCustomerSource] = useState('CUSTOMER');
   const [tripSelection, setTripSelection] = useState('PACKAGE');
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createStep, setCreateStep] = useState(1);
   const [references, setReferences] = useState({});
   const [referencesLoading, setReferencesLoading] = useState({});
@@ -116,8 +122,8 @@ const BookingManagementWizard = () => {
   }, [page, limit, statusFilter, sourceFilter, searchQuery]);
 
   useEffect(() => {
-    loadBookings(page, limit);
-  }, [loadBookings, page, limit]);
+    if (!isCreatePage) loadBookings(page, limit);
+  }, [loadBookings, page, limit, isCreatePage]);
 
   const loadQuotationsForEnquiry = useCallback(async (enquiryId) => {
     if (!enquiryId) {
@@ -165,7 +171,6 @@ const BookingManagementWizard = () => {
       const { enquiry_id, quotation_id, customer_id } = location.state;
       setCustomerSource('ENQUIRY');
       setCreateStep(1);
-      setIsCreateOpen(true);
       setForm((current) => ({
         ...current,
         enquiry_id: enquiry_id || current.enquiry_id,
@@ -176,9 +181,9 @@ const BookingManagementWizard = () => {
       if (enquiry_id) {
         loadQuotationsForEnquiry(enquiry_id);
       }
-      window.history.replaceState({}, document.title);
+      navigate('/bookings/new', { replace: true, state: null });
     }
-  }, [location.state, loadQuotationsForEnquiry, loadReference]);
+  }, [location.state, loadQuotationsForEnquiry, loadReference, navigate]);
 
   const updateForm = (field, value) => setForm((current) => ({ ...current, [field]: value }));
   const updateTraveller = (index, field, value) => setForm((current) => ({ ...current, travellers: current.travellers.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item) }));
@@ -194,15 +199,15 @@ const BookingManagementWizard = () => {
     setCustomerSource('CUSTOMER');
     setTripSelection('PACKAGE');
     setCreateStep(1);
-    setIsCreateOpen(true);
+    navigate('/bookings/new');
   };
   const closeCreate = () => {
     createSubmitRequested.current = false;
-    setIsCreateOpen(false);
     setForm(defaultForm);
     setCustomerSource('CUSTOMER');
     setTripSelection('PACKAGE');
     setCreateStep(1);
+    navigate('/bookings');
   };
 
   const recordLabel = (record, field) => field === 'customer_id'
@@ -673,7 +678,6 @@ const BookingManagementWizard = () => {
       toast.success(result?.message || 'Booking created successfully');
       closeCreate();
       if (result?.data?.id) navigate(`/bookings/${result.data.id}`);
-      else loadBookings(page, limit);
     } catch (error) {
       handleApiError(error, 'Unable to create booking');
     } finally {
@@ -700,6 +704,8 @@ const BookingManagementWizard = () => {
 
   return (
     <div className="space-y-5 pb-8">
+      {!isCreatePage && (
+        <>
       {/* Top Header */}
       <div className="flex flex-col gap-3 px-2 md:flex-row md:items-end md:justify-between">
         <div>
@@ -940,14 +946,18 @@ const BookingManagementWizard = () => {
         onPageChange={setPage}
         onItemsPerPageChange={(value) => { setLimit(value); setPage(1); }}
       />
+        </>
+      )}
 
-      {/* Create Offline Booking Modal (Section 4.1 Schema) */}
-      <Modal
-        isOpen={isCreateOpen}
-        onClose={closeCreate}
+      {isCreatePage && <ManagementWizardPage
         title="New Offline Booking"
+        description="Create a booking in a few guided steps."
         icon={FileText}
-        size="3xl"
+        closeLabel="Back to bookings"
+        steps={steps}
+        currentStep={createStep}
+        onStepChange={setCreateStep}
+        onClose={() => !saving && closeCreate()}
         footer={(
           <div className="flex w-full items-center justify-between gap-3">
             <span className="text-xs text-gray-500">Step {createStep} of {steps.length}</span>
@@ -984,27 +994,6 @@ const BookingManagementWizard = () => {
           </div>
         )}
       >
-        <div className="mb-5 grid grid-cols-4 gap-2">
-          {steps.map((step) => (
-            <button
-              key={step.id}
-              type="button"
-              disabled={step.id > createStep}
-              onClick={() => step.id < createStep && setCreateStep(step.id)}
-              className={`rounded-xl px-2 py-2 text-xs font-semibold ${
-                step.id === createStep
-                  ? 'bg-cyan-600 text-white'
-                  : step.id < createStep
-                  ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300'
-                  : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500'
-              }`}
-            >
-              {step.id < createStep && <Check className="mr-1 inline h-3 w-3" />}
-              {step.label}
-            </button>
-          ))}
-        </div>
-
         <form
           id="booking-create-form"
           onSubmit={saveBooking}
@@ -1268,7 +1257,7 @@ const BookingManagementWizard = () => {
             </div>
           )}
         </form>
-      </Modal>
+      </ManagementWizardPage>}
 
       {/* Delete Confirmation Modal */}
       <ConfirmDeleteModal

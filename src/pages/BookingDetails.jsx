@@ -11,6 +11,7 @@ import DocumentListItem from '../component/common/DocumentListItem';
 import PrivateDocumentPreview from '../component/common/PrivateDocumentPreview';
 import SelectField from '../component/common/SelectField';
 import { apiCall, handleApiError } from '../utils/apiCall';
+import { downloadPdfResponse } from '../utils/downloadPdf';
 import { downloadPrivateDocument } from '../hooks/usePrivateDocumentFile';
 import { useEnums } from '../context/EnumsContext';
 
@@ -138,21 +139,7 @@ const BookingDetails = () => {
         const result = await response.json().catch(() => ({}));
         throw new Error(result?.message || result?.detail || 'Unable to generate booking PDF');
       }
-      const contentType = response.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const result = await response.json();
-        const url = result?.data?.url || result?.data?.download_url || result?.data?.file_url || result?.data;
-        if (typeof url === 'string') window.open(url, '_blank', 'noopener,noreferrer');
-        else toast.success(result?.message || 'Booking PDF generated');
-        return;
-      }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${booking.booking_code || 'booking'}.pdf`;
-      link.click();
-      URL.revokeObjectURL(url);
+      await downloadPdfResponse(response, `${booking.booking_code || 'booking'}.pdf`);
       toast.success('Booking PDF downloaded');
     } catch (error) { handleApiError(error, 'Unable to generate booking PDF'); }
   };
@@ -164,12 +151,7 @@ const BookingDetails = () => {
         const result = await response.json().catch(() => ({}));
         throw new Error(result?.message || result?.detail || `Unable to generate ${voucherType} voucher`);
       }
-      const url = URL.createObjectURL(await response.blob());
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${booking.booking_code || 'booking'}-${voucherType}-voucher.pdf`;
-      link.click();
-      URL.revokeObjectURL(url);
+      await downloadPdfResponse(response, `${booking.booking_code || 'booking'}-${voucherType}-voucher.pdf`);
       toast.success(`${voucherType === 'hotel' ? 'Hotel' : 'Vehicle'} voucher downloaded`);
     } catch (error) {
       handleApiError(error, `Unable to generate ${voucherType} voucher`);
