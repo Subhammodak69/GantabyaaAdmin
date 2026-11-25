@@ -7,6 +7,15 @@ const AuthContext = createContext();
 const USER_DATA_KEY = 'admin_data';
 const ACCESS_TOKEN_KEY = 'access_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
+const AUTH_REQUEST_TIMEOUT_MS = 12000;
+
+const authApiCall = (endpoint, method = 'GET', body = null) => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), AUTH_REQUEST_TIMEOUT_MS);
+
+  return apiCall(endpoint, method, body, {}, { signal: controller.signal })
+    .finally(() => window.clearTimeout(timeoutId));
+};
 
 const clearAuthStorage = () => {
   localStorage.removeItem(USER_DATA_KEY);
@@ -73,7 +82,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUserProfile = async () => {
     try {
-      const response = await apiCall('/api/v1/admin/auth/me', 'GET');
+      const response = await authApiCall('/api/v1/admin/auth/me', 'GET');
       if (response.ok) {
         const payload = await response.json();
         const profile = payload?.data && typeof payload.data === 'object' && !Array.isArray(payload.data)
@@ -103,7 +112,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     try {
-      const response = await apiCall('/api/v1/sessions/refresh', 'POST', payload);
+      const response = await authApiCall('/api/v1/sessions/refresh', 'POST', payload);
       const resPayload = await response.json().catch(() => ({}));
       const data = resPayload?.data && typeof resPayload.data === 'object' ? resPayload.data : resPayload;
 
@@ -161,7 +170,7 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
 
     try {
-      const response = await apiCall('/api/v1/admin/auth/me', 'GET');
+      const response = await authApiCall('/api/v1/admin/auth/me', 'GET');
 
       if (response.ok) {
         const payload = await response.json();
@@ -177,7 +186,7 @@ export const AuthProvider = ({ children }) => {
         const refreshResult = await refreshAccessToken();
 
         if (refreshResult.ok) {
-          const retryResponse = await apiCall('/api/v1/admin/auth/me', 'GET');
+          const retryResponse = await authApiCall('/api/v1/admin/auth/me', 'GET');
           if (retryResponse.ok) {
             const retryPayload = await retryResponse.json();
             const profile = retryPayload?.data && typeof retryPayload.data === 'object' && !Array.isArray(retryPayload.data)

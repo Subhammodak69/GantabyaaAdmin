@@ -67,7 +67,7 @@ const persistSessionAfterRefresh = (nextAccessToken, nextRefreshToken, expiresIn
   if (nextRefreshToken) localStorage.setItem('refresh_token', nextRefreshToken);
 };
 
-const refreshAccessTokenSilently = async () => {
+const refreshAccessTokenSilently = async (signal) => {
   const { refreshToken } = getStoredSessionSnapshot();
   if (!refreshToken) return null;
 
@@ -80,6 +80,7 @@ const refreshAccessTokenSilently = async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken || '' }),
+      signal,
     });
 
     const payload = await response.json().catch(() => ({}));
@@ -123,9 +124,10 @@ const PUBLIC_AUTH_ENDPOINTS = [
  * @param {string} method - HTTP method (GET, POST, PUT, DELETE, etc.)
  * @param {Object|null} body - Request payload
  * @param {Object} customHeaders - Additional request headers
+ * @param {Object} requestOptions - Additional fetch options
  * @returns {Promise<Response>} - The fetch response object
  */
-export const apiCall = async (endpoint, method = 'GET', body = null, customHeaders = {}) => {
+export const apiCall = async (endpoint, method = 'GET', body = null, customHeaders = {}, requestOptions = {}) => {
   const isPublicAuth = 
     PUBLIC_AUTH_ENDPOINTS.some(p => endpoint.includes(p)) ||
     endpoint.includes('/auth/otp/request') ||
@@ -170,6 +172,7 @@ export const apiCall = async (endpoint, method = 'GET', body = null, customHeade
   }
 
   const options = {
+    ...requestOptions,
     method,
     headers,
   };
@@ -194,7 +197,7 @@ export const apiCall = async (endpoint, method = 'GET', body = null, customHeade
     // Global 401 Unauthorized handler (only for protected endpoints, not public auth)
     if (response.status === 401 && !isPublicAuth && !formattedEndpoint.includes('/api/v1/sessions/refresh') && !formattedEndpoint.includes('/api/v1/sessions/logout')) {
       try {
-        const refreshedToken = await refreshAccessTokenSilently();
+        const refreshedToken = await refreshAccessTokenSilently(options.signal);
         if (refreshedToken) {
           const retryHeaders = {
             ...headers,
