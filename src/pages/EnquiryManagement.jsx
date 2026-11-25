@@ -31,6 +31,7 @@ import Pagination from '../component/common/PaginationComponent';
 import ActionMenu from '../component/common/ActionMenu';
 import { apiCall, handleApiError } from '../utils/apiCall';
 import { sanitizeNumericInput } from '../utils/inputValidation';
+import { parseWhatsappEnquiry } from '../utils/whatsappEnquiryParser';
 
 const ENQUIRY_TYPES = [
   { value: 'FIXED_TOUR', label: 'Fixed Tour' },
@@ -216,6 +217,8 @@ const EnquiryManagement = () => {
 
   // Active items
   const [createForm, setCreateForm] = useState(defaultCreateForm);
+  const [whatsappImportOpen, setWhatsappImportOpen] = useState(false);
+  const [whatsappImportText, setWhatsappImportText] = useState('');
   const [editingEnquiry, setEditingEnquiry] = useState(null);
   const [statusEditForm, setStatusEditForm] = useState({ status: 'NEW', message: '' });
 
@@ -269,25 +272,27 @@ const EnquiryManagement = () => {
   const fetchVariantsForPackage = useCallback(async (packageId) => {
     if (!packageId) {
       setPackageVariants([]);
-      return;
+      return [];
     }
     setVariantsLoading(true);
     try {
       const res = await apiCall(`/api/v1/admin/tour-packages/${encodeURIComponent(packageId)}/variants?page=1&page_size=100`, 'GET');
       const payload = await res.json().catch(() => ({}));
       if (Array.isArray(payload?.data)) {
-        setPackageVariants(
-          payload.data.map((v) => ({
-            value: v.id,
-            label: `${v.name || 'Standard'} ${v.season_name ? `(${v.season_name})` : ''} - â‚¹${v.selling_price || v.list_price || 0}`,
-            raw: v,
-          }))
-        );
+        const options = payload.data.map((v) => ({
+          value: v.id,
+          label: `${v.name || 'Standard'} ${v.season_name ? `(${v.season_name})` : ''} - â‚¹${v.selling_price || v.list_price || 0}`,
+          raw: v,
+        }));
+        setPackageVariants(options);
+        return options;
       } else {
         setPackageVariants([]);
+        return [];
       }
     } catch {
       setPackageVariants([]);
+      return [];
     } finally {
       setVariantsLoading(false);
     }
@@ -490,12 +495,103 @@ const EnquiryManagement = () => {
   // Open the create page and reset the wizard
   const openCreatePage = () => {
     setCreateForm(defaultCreateForm);
+    setWhatsappImportOpen(false);
+    setWhatsappImportText('');
     setCustomerType('SYSTEM');
     setSelectedCustomerOption(null);
     setTripSelectionType('DESTINATION');
     setPackageVariants([]);
     setCreateStep(1);
     navigate('/enquiries/new');
+  };
+
+  const importWhatsAppEnquiry = async () => {
+    let parsed;
+    try {
+      parsed = parseWhatsappEnquiry(whatsappImportText);
+    } catch (error) {
+      toast.error(error.message || 'Unable to read the WhatsApp enquiry.');
+      return;
+    }
+
+    const normalize = (value) => value?.trim().toLowerCase().replace(/\s+/g, ' ') || '';
+    const findOption = (options, value, labels) => {
+      const target = normalize(value);
+      if (!target) return null;
+      return options.find((option) => labels(option).some((label) => normalize(label) === target)) || null;
+    };
+    const packageOption = parsed.packageTitle
+      ? findOption(packages, parsed.packageTitle, (option) => [option.raw?.title, option.label])
+      : null;
+    const destinationOption = parsed.destination
+      ? findOption(destinations, parsed.destination, (option) => [option.label])
+      : null;
+    const selectionType = parsed.packageTitle ? 'PACKAGE' : 'DESTINATION';
+    const warnings = [];
+    let variantOptions = [];
+    let variantOption = null;
+
+    if (parsed.packageTitle && !packageOption) {
+      warnings.push(`Package "${parsed.packageTitle}" was not found; select it manually.`);
+    }
+    if (!parsed.packageTitle && !parsed.destination) {
+      warnings.push('No package or destination was found; select one manually.');
+    }
+    if (selectionType === 'DESTINATION' && parsed.destination && !destinationOption) {
+      warnings.push(`Destination "${parsed.destination}" was not found; select it manually.`);
+    }
+    if (!parsed.name.trim() && !parsed.phone.trim() && !parsed.email.trim()) {
+      warnings.push('No contact details were found; enter a name, phone number, or email manually.');
+    }
+    if (packageOption) {
+      variantOptions = await fetchVariantsForPackage(packageOption.value);
+      variantOption = findOption(
+        variantOptions,
+        parsed.variant,
+        (option) => [option.raw?.name, option.raw?.season_name, option.label]
+      );
+      if (parsed.variant && !variantOption) {
+        warnings.push(`Variant "${parsed.variant}" was not found; select it manually.`);
+      }
+    } else {
+      setPackageVariants([]);
+    }
+
+    const mealOption = findOption(MEAL_PLANS, parsed.meal_plan, (option) => [option.value, option.label]);
+    const vehicleOption = findOption(VEHICLE_TYPES, parsed.vehicle_type, (option) => [option.value, option.label]);
+    const hotelCategoryOption = findOption(HOTEL_CATEGORIES, parsed.hotel_category, (option) => [option.value, option.label]);
+    const roomTypeOption = findOption(ROOM_TYPES, parsed.room_type, (option) => [option.value, option.label]);
+    if (parsed.meal_plan && !mealOption) warnings.push(`Meal plan "${parsed.meal_plan}" was not recognized.`);
+    if (parsed.vehicle_type && !vehicleOption) warnings.push(`Vehicle type "${parsed.vehicle_type}" was not recognized.`);
+    if (parsed.hotel_category && !hotelCategoryOption) warnings.push(`Hotel category "${parsed.hotel_category}" was not recognized.`);
+    if (parsed.room_type && !roomTypeOption) warnings.push(`Room type "${parsed.room_type}" was not recognized.`);
+
+    const formValues = { ...parsed };
+    delete formValues.destination;
+    delete formValues.packageTitle;
+    delete formValues.variant;
+    setCreateForm({
+      ...defaultCreateForm,
+      ...formValues,
+      destination_id: selectionType === 'DESTINATION' ? destinationOption?.value || '' : '',
+      package_id: packageOption?.value || '',
+      variant_id: variantOption?.value || '',
+      meal_plan: mealOption?.value || 'ANY',
+      vehicle_type: vehicleOption?.value || '',
+      hotel_category: hotelCategoryOption?.value || '',
+      room_type: roomTypeOption?.value || '',
+    });
+    setCustomerType('MANUAL');
+    setSelectedCustomerOption(null);
+    setTripSelectionType(selectionType);
+    setCreateStep(1);
+    setWhatsappImportOpen(false);
+
+    if (warnings.length) {
+      toast.error(`Details imported with items to review: ${warnings.join(' ')}`);
+    } else {
+      toast.success('WhatsApp enquiry details filled. Review them and create the enquiry.');
+    }
   };
 
   const closeCreatePage = () => {
@@ -1029,6 +1125,48 @@ const EnquiryManagement = () => {
           </div>
         )}
       >
+        <div className="mb-6 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Import a WhatsApp enquiry</h3>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Paste the customer's message to prefill this form, then review the details before creating it.
+              </p>
+            </div>
+            <button
+              type="button"
+              aria-expanded={whatsappImportOpen}
+              onClick={() => setWhatsappImportOpen((open) => !open)}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-white px-3.5 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-800 dark:text-indigo-300 dark:hover:bg-gray-700"
+            >
+              <FileText className="h-4 w-4" />
+              {whatsappImportOpen ? 'Close import' : 'Paste WhatsApp message'}
+            </button>
+          </div>
+          {whatsappImportOpen && (
+            <div className="mt-4 space-y-3">
+              <label htmlFor="whatsapp-enquiry-import" className={labelClass}>WhatsApp message</label>
+              <textarea
+                id="whatsapp-enquiry-import"
+                rows={8}
+                value={whatsappImportText}
+                onChange={(event) => setWhatsappImportText(event.target.value)}
+                placeholder="Paste the complete WhatsApp enquiry message here..."
+                className={inputClass}
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={importWhatsAppEnquiry}
+                  disabled={!whatsappImportText.trim()}
+                  className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Check className="h-4 w-4" /> Extract details
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
         <div className="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-8">
           <aside className="min-w-0">
             <div className="mb-5 lg:hidden">
