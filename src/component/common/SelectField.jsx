@@ -22,7 +22,7 @@ const mergeSelectStyles = (baseStyles, styles = {}, theme = 'light') => {
   return merged;
 };
 
-const SelectField = ({ styles, ...props }) => {
+const SelectField = ({ styles, className = '', ...props }) => {
   const { theme } = useTheme();
   const mergedStyles = useMemo(
     () => mergeSelectStyles(getReactSelectStyles(theme), styles, theme),
@@ -34,6 +34,7 @@ const SelectField = ({ styles, ...props }) => {
       key={theme}
       {...getReactSelectMenuProps()}
       {...props}
+      className={`w-full min-w-0 ${className}`.trim()}
       styles={mergedStyles}
     />
   );

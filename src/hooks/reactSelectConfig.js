@@ -19,6 +19,8 @@ export const getReactSelectStyles = (theme = 'light') => {
   control: (provided, state) => {
     return {
       ...provided,
+      width: '100%',
+      minWidth: 0,
       backgroundColor: colors.controlBg,
       borderColor: state.isFocused ? '#6366f1' : colors.controlBorder,
       borderRadius: '0.75rem',
@@ -36,6 +38,10 @@ export const getReactSelectStyles = (theme = 'light') => {
   option: (provided, state) => {
     return {
       ...provided,
+      minWidth: 0,
+      whiteSpace: 'normal',
+      overflowWrap: 'anywhere',
+      wordBreak: 'break-word',
       backgroundColor: state.isSelected 
         ? colors.optionSelected
         : state.isFocused 
@@ -54,6 +60,8 @@ export const getReactSelectStyles = (theme = 'light') => {
     return {
       ...provided,
       backgroundColor: colors.menuBg,
+      maxWidth: 'calc(100vw - 1rem)',
+      boxSizing: 'border-box',
       borderRadius: '0.5rem',
       boxShadow: isDark
         ? '0 18px 40px rgba(0, 0, 0, 0.45)'
@@ -63,10 +71,15 @@ export const getReactSelectStyles = (theme = 'light') => {
       overflow: 'hidden',
     };
   },
-  menuPortal: base => ({ ...base, zIndex: 9999 }),
+  menuPortal: base => ({ ...base, maxWidth: 'calc(100vw - 1rem)', zIndex: 9999 }),
   singleValue: (provided) => {
     return {
       ...provided,
+      minWidth: 0,
+      maxWidth: 'calc(100% - 8px)',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
       color: colors.controlText,
       fontSize: '0.875em'
     };
@@ -76,6 +89,7 @@ export const getReactSelectStyles = (theme = 'light') => {
     color: colors.controlText,
     fontSize: '0.875em',
     margin: 0,
+    minWidth: 0,
   }),
   placeholder: (provided) => ({
     ...provided,
@@ -95,6 +109,10 @@ export const getReactSelectStyles = (theme = 'light') => {
     ...provided,
     height: '100%',
     padding: '0 0.75rem',
+    minWidth: 0,
+    maxWidth: '100%',
+    overflow: 'hidden',
+    flexWrap: 'nowrap',
     display: 'flex',
     alignItems: 'center',
   }),
@@ -103,6 +121,7 @@ export const getReactSelectStyles = (theme = 'light') => {
     height: '100%',
     display: 'flex',
     alignItems: 'center',
+    flexShrink: 0,
   }),
   indicatorSeparator: () => ({
     display: 'none'
