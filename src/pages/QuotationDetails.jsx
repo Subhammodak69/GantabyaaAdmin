@@ -3,12 +3,12 @@ import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft,
-  Calendar,
   Check,
   Download,
   Edit3,
   FileText,
   Mail,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   Send,
@@ -17,6 +17,7 @@ import {
 import Modal from '../component/common/Modal';
 import ManagementWizardPage from '../component/common/ManagementWizardPage';
 import ConfirmDeleteModal from '../component/common/ConfirmDeleteModal';
+import ActionMenu from '../component/common/ActionMenu';
 import CustomDatePicker from '../component/common/CustomDatePicker';
 import SelectField from '../component/common/SelectField';
 import { apiCall, handleApiError } from '../utils/apiCall';
@@ -36,6 +37,14 @@ const formatDate = (value) => {
   try { return new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch { return value; }
 };
 const formatAmount = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+const DetailTile = ({ label, value }) => (
+  <div className="min-w-0 rounded-xl bg-slate-50 p-3 dark:bg-gray-900/50">
+    <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">{label}</dt>
+    <dd className="mt-1 break-words text-sm font-medium text-slate-800 dark:text-gray-200">
+      {value === undefined || value === null || value === '' ? 'Not provided' : value}
+    </dd>
+  </div>
+);
 const toLocalDateTime = (value) => value ? new Date(value).toISOString().slice(0, 16) : '';
 const toIso = (value) => value ? new Date(value).toISOString() : '';
 const prettyLabel = (value) => value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -125,6 +134,7 @@ const QuotationDetails = () => {
   const roomTypeOptions = getEnumOptions('RoomType');
   const vehicleTypeOptions = getEnumOptions('VehicleType');
   const [quotation, setQuotation] = useState(null);
+  const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [converting, setConverting] = useState(false);
@@ -166,44 +176,16 @@ const QuotationDetails = () => {
 
   useEffect(() => { loadQuotation(); }, [loadQuotation]);
 
+  useEffect(() => { setActiveTab('overview'); }, [quotationId]);
+
   useEffect(() => {
     if (!quotation) return undefined;
-    const status = String(quotation.status || '').trim().toUpperCase();
-    const buttons = Array.from(document.querySelectorAll('button'));
-    const configureAction = (label, enabled, disabledTitle) => {
-      const button = buttons.find((item) => item.textContent.trim() === label);
-      if (!button) return;
-      button.disabled = !enabled;
-      button.title = enabled ? label : disabledTitle;
-      button.classList.toggle('quotation-action-disabled', !enabled);
-      const marker = button.querySelector('[data-disabled-action-marker]');
-      if (enabled) {
-        marker?.remove();
-        button.style.opacity = '';
-        button.style.filter = '';
-        button.style.cursor = '';
-        return;
-      }
-      button.style.opacity = '0.45';
-      button.style.filter = 'grayscale(0.35)';
-      button.style.cursor = 'not-allowed';
-      if (!marker) {
-        const disabledMarker = document.createElement('span');
-        disabledMarker.dataset.disabledActionMarker = 'true';
-        disabledMarker.textContent = '⊘';
-        button.appendChild(disabledMarker);
-      }
-    };
-
-    configureAction('Edit', status === 'DRAFT', 'Edit is available only for draft quotations');
-    configureAction('New version', status === 'REJECTED', 'New version is available only for rejected quotations');
-    if (isEditOpen) {
-      const submitButton = document.querySelector('button[type="submit"][form="quotation-edit-form"]');
-      if (submitButton) {
-        submitButton.disabled = !hasEditChanges;
-        submitButton.title = hasEditChanges ? (isCreatingVersion ? 'Create version' : 'Save changes') : 'Change a field before saving';
-        submitButton.classList.toggle('quotation-action-disabled', !hasEditChanges);
-      }
+    if (!isEditOpen) return undefined;
+    const submitButton = document.querySelector('button[type="submit"][form="quotation-edit-form"]');
+    if (submitButton) {
+      submitButton.disabled = !hasEditChanges;
+      submitButton.title = hasEditChanges ? (isCreatingVersion ? 'Create version' : 'Save changes') : 'Change a field before saving';
+      submitButton.classList.toggle('quotation-action-disabled', !hasEditChanges);
     }
     return undefined;
   }, [quotation, isEditOpen, isCreatingVersion, hasEditChanges]);
@@ -604,14 +586,310 @@ const QuotationDetails = () => {
     );
   }
 
-  return <div className="space-y-5 pb-8"><div className="flex flex-col gap-3 px-2 md:flex-row md:items-center md:justify-between"><div className="flex items-center gap-3"><button type="button" onClick={() => navigate('/quotations')} className="rounded-xl border border-gray-200 p-2 text-gray-600 dark:border-gray-700 dark:text-gray-300" title="Back to quotations"><ArrowLeft className="h-5 w-5" /></button><div><p className="text-sm font-semibold text-cyan-700 dark:text-cyan-300">{quotation.quotation_code || 'Quotation'}</p><h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{quotation.tour_name || 'Untitled tour'}</h1><p className="text-sm text-slate-500">Version {quotation.version || 1} · Created {formatDate(quotation.created_at)}</p></div></div><div className="flex flex-wrap gap-2"><button type="button" onClick={loadQuotation} className="rounded-xl border border-gray-200 bg-white p-2.5 text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300" title="Refresh"><RefreshCw className="h-4 w-4" /></button><button type="button" aria-label="Edit quotation" title="Edit quotation" onClick={openEdit} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white p-2.5 text-sm font-semibold text-gray-700 sm:px-3 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"><Edit3 className="h-4 w-4" /><span className="hidden sm:inline">Edit</span></button><button type="button" aria-label="Create quotation version" title="Create quotation version" onClick={createVersion} className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 p-2.5 text-sm font-semibold text-cyan-700 sm:px-3 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-300"><Plus className="h-4 w-4" /><span className="hidden sm:inline">New version</span></button><button type="button" aria-label="Send quotation" title="Send quotation" onClick={openSendModal} className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 p-2.5 text-sm font-semibold text-white sm:px-3"><Send className="h-4 w-4" /><span className="hidden sm:inline">Send</span></button><button type="button" onClick={downloadPdf} className="rounded-xl border border-gray-200 bg-white p-2.5 text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300" title="Generate PDF"><Download className="h-4 w-4" /></button><button type="button" onClick={() => setIsDeleteOpen(true)} className="rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-rose-600 dark:border-rose-900/50 dark:bg-rose-950/20" title="Delete quotation"><Trash2 className="h-4 w-4" /></button></div></div>
-    {String(quotation.status || '').toUpperCase() === 'ACCEPTED' && <div className="flex justify-end"><button type="button" onClick={convertToBooking} disabled={converting} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"><Plus className="h-4 w-4" />{converting ? 'Converting...' : 'Convert to booking'}</button></div>}
-    <div className="grid gap-4 md:grid-cols-4"><div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><p className="text-xs uppercase tracking-wide text-gray-500">Status</p><p className="mt-2 text-lg font-bold text-slate-900 dark:text-slate-100">{quotation.status || 'DRAFT'}</p></div><div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><p className="text-xs uppercase tracking-wide text-gray-500">Total amount</p><p className="mt-2 text-lg font-bold text-slate-900 dark:text-slate-100">{formatAmount(quotation.total_amount)}</p></div><div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><p className="text-xs uppercase tracking-wide text-gray-500">Travel dates</p><p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">{formatDate(quotation.travel_date)} - {formatDate(quotation.return_date)}</p></div><div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><p className="text-xs uppercase tracking-wide text-gray-500">Valid until</p><p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">{formatDate(quotation.valid_until)}</p></div></div>
-    <div className="grid gap-5 xl:grid-cols-3"><div className="space-y-5 xl:col-span-2"><section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"><h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-slate-100">Quotation summary</h2><div className="grid gap-4 md:grid-cols-2">{getQuotationSummaryFields(quotation).map(({ field, label, value }) => <div key={field} className="border-b border-slate-100 pb-3 dark:border-gray-700"><p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p><p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800 dark:text-slate-200">{value || 'Not provided'}</p></div>)}</div></section><section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"><h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-slate-100">Itinerary</h2>{(quotation.itinerary || []).length ? <div className="space-y-3">{quotation.itinerary.map((day) => <div key={day.id || day.day_number} className="rounded-xl bg-slate-50 p-4 dark:bg-gray-900/50"><div className="flex items-center justify-between"><h3 className="font-semibold text-slate-900 dark:text-slate-100">Day {day.day_number}: {day.title || 'Untitled day'}</h3><span className="text-xs text-gray-500">{formatDate(day.date)}</span></div><p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{day.description || 'No description'}</p><p className="mt-2 text-xs text-gray-500">{day.overnight_location || 'No overnight location'}{day.meal_plan ? ` · ${day.meal_plan}` : ''}</p></div>)}</div> : <p className="text-sm text-gray-500">No itinerary days added.</p>}</section></div><aside className="space-y-5"><section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"><h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-slate-100">Amount breakdown</h2><div className="space-y-3 text-sm text-slate-700 dark:text-slate-300"><div className="flex justify-between"><span>Subtotal</span><strong className="text-slate-900 dark:text-slate-100">{formatAmount(quotation.subtotal)}</strong></div><div className="flex justify-between"><span>Discount</span><strong className="text-slate-900 dark:text-slate-100">- {formatAmount(quotation.discount_amount)}</strong></div><div className="flex justify-between"><span>Tax</span><strong className="text-slate-900 dark:text-slate-100">{formatAmount(quotation.tax_amount)}</strong></div><div className="flex justify-between border-t border-slate-200 pt-3 text-base dark:border-gray-700"><span className="text-slate-900 dark:text-slate-100">Total</span><strong className="text-slate-900 dark:text-slate-100">{formatAmount(quotation.total_amount)}</strong></div></div></section><section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"><h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-slate-100">Trip components</h2><div className="space-y-3 text-sm text-slate-700 dark:text-slate-200"><p><strong>{quotation.items?.length || 0}</strong> quotation items</p><p><strong>{quotation.hotels?.length || 0}</strong> hotel stays</p><p><strong>{quotation.vehicles?.length || 0}</strong> vehicle bookings</p><p><Calendar className="mr-2 inline h-4 w-4" />Updated {formatDate(quotation.updated_at)}</p></div></section></aside></div>
+  const quotationStatus = String(quotation.status || 'DRAFT').toUpperCase();
+  const tabs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'items', label: 'Items', count: quotation.items?.length || 0 },
+    { id: 'hotels', label: 'Hotels', count: quotation.hotels?.length || 0 },
+    { id: 'vehicles', label: 'Vehicles', count: quotation.vehicles?.length || 0 },
+    { id: 'itinerary', label: 'Itinerary', count: quotation.itinerary?.length || 0 },
+    { id: 'pricing', label: 'Pricing' },
+    { id: 'notes', label: 'Notes' },
+  ];
+  const actionItems = [
+    { label: 'Refresh quotation', icon: <RefreshCw className="h-4 w-4" />, onClick: loadQuotation },
+    {
+      label: 'Edit quotation',
+      icon: <Edit3 className="h-4 w-4" />,
+      onClick: openEdit,
+      disabled: quotationStatus !== 'DRAFT',
+      title: quotationStatus === 'DRAFT' ? 'Edit quotation' : 'Editing is available for drafts',
+    },
+    {
+      label: 'New version',
+      icon: <Plus className="h-4 w-4" />,
+      onClick: createVersion,
+      disabled: quotationStatus !== 'REJECTED',
+      title: quotationStatus === 'REJECTED' ? 'Create a new version' : 'A new version is available for rejected quotations',
+    },
+    { label: 'Download PDF', icon: <Download className="h-4 w-4" />, onClick: downloadPdf },
+    ...(quotationStatus === 'ACCEPTED'
+      ? [{
+        label: converting ? 'Converting to booking...' : 'Convert to booking',
+        icon: <Plus className="h-4 w-4" />,
+        onClick: convertToBooking,
+        disabled: converting,
+      }]
+      : []),
+    {
+      label: 'Delete quotation',
+      icon: <Trash2 className="h-4 w-4" />,
+      onClick: () => setIsDeleteOpen(true),
+      className: 'text-rose-600 dark:text-rose-400',
+    },
+  ];
+  const summaryFields = getQuotationSummaryFields(quotation)
+    .filter(({ field }) => ['customer', 'enquiry_code', 'package', 'variant', 'destination'].includes(field));
+  const handleTabKeyDown = (event, index) => {
+    let nextIndex;
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = tabs.length - 1;
+    if (nextIndex === undefined) return;
+    event.preventDefault();
+    setActiveTab(tabs[nextIndex].id);
+    document.getElementById(`quotation-tab-${tabs[nextIndex].id}`)?.focus();
+  };
 
-    <Modal isOpen={isSendOpen} onClose={() => setIsSendOpen(false)} title="Send quotation" icon={Mail} size="sm" footer={<div className="flex justify-end gap-3"><button type="button" onClick={() => setIsSendOpen(false)} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700">Cancel</button><button type="submit" form="send-quotation-form" className="rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white">Send quotation</button></div>}><form id="send-quotation-form" onSubmit={sendQuotation} className="space-y-4"><p className="text-sm text-gray-500">The quotation will be sent to the recipient email below.</p><input type="email" required value={recipientEmail} onChange={(event) => setRecipientEmail(event.target.value)} className={inputClass} placeholder="customer@example.com" /></form></Modal>
-    <ConfirmDeleteModal isOpen={isDeleteOpen} onClose={() => { if (!deleting) setIsDeleteOpen(false); }} onConfirm={deleteQuotation} confirming={deleting} itemLabel={quotation.quotation_code || 'this quotation'} title="Delete quotation" message="This quotation and its itinerary details will be permanently removed." />
-  </div>;
+  return (
+    <div className="space-y-4 pb-8">
+      <header className="flex flex-col gap-3 pb-1 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/quotations')}
+            className="shrink-0 rounded-xl border border-gray-200 bg-white p-2 text-gray-600 transition hover:border-cyan-300 hover:text-cyan-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+            title="Back to quotations"
+            aria-label="Back to quotations"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs font-bold tracking-wide text-cyan-700 dark:text-cyan-300">{quotation.quotation_code || 'Quotation'}</p>
+              <span className="rounded-full border border-slate-200 bg-white/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-300">
+                {quotation.status || 'DRAFT'}
+              </span>
+            </div>
+            <h1 className="mt-1 break-words text-xl font-bold leading-tight tracking-tight text-slate-900 dark:text-slate-100 sm:text-2xl">
+              {quotation.tour_name || 'Untitled tour'}
+            </h1>
+            <p className="mt-1 text-xs text-slate-500 dark:text-gray-400">
+              Version {quotation.version || 1} · Created {formatDate(quotation.created_at)}
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={openSendModal}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-cyan-700"
+          >
+            <Send className="h-4 w-4" />
+            Send
+          </button>
+          <ActionMenu
+            menuId={`quotation-actions-${quotation.id || quotation.quotation_code}`}
+            actions={actionItems}
+            trigger={(
+              <button
+                type="button"
+                aria-label="More quotation actions"
+                title="More actions"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-cyan-300 hover:text-cyan-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+              >
+                <MoreHorizontal className="h-5 w-5" />
+              </button>
+            )}
+          />
+        </div>
+      </header>
+
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <DetailTile label="Total amount" value={formatAmount(quotation.total_amount)} />
+        <DetailTile label="Travel dates" value={`${formatDate(quotation.travel_date)} – ${formatDate(quotation.return_date)}`} />
+        <DetailTile label="Valid until" value={formatDate(quotation.valid_until)} />
+        <DetailTile label="Last updated" value={formatDate(quotation.updated_at)} />
+      </dl>
+
+      <div className="space-y-3">
+        <div className="overflow-x-auto border-b border-slate-200 dark:border-gray-700">
+          <div role="tablist" aria-label="Quotation details sections" className="flex min-w-max gap-1">
+            {tabs.map((tab, index) => (
+              <button
+                key={tab.id}
+                id={`quotation-tab-${tab.id}`}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                aria-controls={`quotation-panel-${tab.id}`}
+                tabIndex={activeTab === tab.id ? 0 : -1}
+                onClick={() => setActiveTab(tab.id)}
+                onKeyDown={(event) => handleTabKeyDown(event, index)}
+                className={`relative flex min-h-11 items-center gap-2 whitespace-nowrap px-3 text-xs font-semibold transition ${
+                  activeTab === tab.id
+                    ? 'text-cyan-700 after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-cyan-600 dark:text-cyan-300 dark:after:bg-cyan-400'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-gray-200'
+                }`}
+              >
+                {tab.label}
+                {tab.count !== undefined && (
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${activeTab === tab.id ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200' : 'bg-slate-100 text-slate-500 dark:bg-gray-700 dark:text-gray-300'}`}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div
+          id={`quotation-panel-${activeTab}`}
+          role="tabpanel"
+          aria-labelledby={`quotation-tab-${activeTab}`}
+          tabIndex={0}
+          className="min-h-64 px-1 py-2 outline-none sm:px-0 sm:py-3"
+        >
+          {activeTab === 'overview' && (
+            <div className="space-y-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Quotation overview</h2>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-gray-400">Customer and trip information linked to this quotation.</p>
+              </div>
+              <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {summaryFields.map(({ field, label, value }) => <DetailTile key={field} label={label} value={value} />)}
+              </dl>
+            </div>
+          )}
+
+          {activeTab === 'items' && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Quotation items</h2>
+              {quotation.items?.length ? (
+                <div className="space-y-2">
+                  {quotation.items.map((item, index) => (
+                    <article key={item.id || index} className="rounded-xl border border-slate-200 p-3 dark:border-gray-700">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h3 className="break-words text-sm font-semibold text-slate-900 dark:text-slate-100">{item.name || 'Quotation item'}</h3>
+                          {item.description && <p className="mt-1 whitespace-pre-wrap text-xs text-slate-500 dark:text-gray-400">{item.description}</p>}
+                        </div>
+                        <span className="rounded-full bg-cyan-50 px-2 py-1 text-[10px] font-semibold text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300">{prettyLabel(item.item_type || 'other')}</span>
+                      </div>
+                      <dl className="mt-3 grid grid-cols-3 gap-2">
+                        <DetailTile label="Quantity" value={item.quantity ?? 1} />
+                        <DetailTile label="Unit price" value={formatAmount(item.unit_price)} />
+                        <DetailTile label="Total" value={formatAmount(item.total_price)} />
+                      </dl>
+                    </article>
+                  ))}
+                </div>
+              ) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-gray-900/50 dark:text-gray-400">No quotation items added.</p>}
+            </div>
+          )}
+
+          {activeTab === 'hotels' && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Accommodation</h2>
+              {quotation.hotels?.length ? (
+                <div className="grid gap-2 lg:grid-cols-2">
+                  {quotation.hotels.map((hotel, index) => (
+                    <article key={hotel.id || index} className="rounded-xl border border-slate-200 p-3 dark:border-gray-700">
+                      <h3 className="break-words text-sm font-semibold text-slate-900 dark:text-slate-100">{hotel.hotel_name || 'Hotel stay'}</h3>
+                      <p className="mt-0.5 text-xs text-slate-500 dark:text-gray-400">{[hotel.place, hotel.address].filter(Boolean).join(' · ') || 'Location not provided'}</p>
+                      <dl className="mt-3 grid grid-cols-2 gap-2">
+                        <DetailTile label="Check in" value={formatDate(hotel.check_in)} />
+                        <DetailTile label="Check out" value={formatDate(hotel.check_out)} />
+                        <DetailTile label="Nights / rooms" value={`${hotel.nights ?? '—'} / ${hotel.room_count ?? '—'}`} />
+                        <DetailTile label="Room type" value={hotel.room_type} />
+                        <DetailTile label="Paid by traveller" value={hotel.paid_by_traveller === undefined ? undefined : hotel.paid_by_traveller ? 'Yes' : 'No'} />
+                        <DetailTile label="Contact" value={[hotel.contact_person, hotel.contact_number].filter(Boolean).join(' · ')} />
+                      </dl>
+                    </article>
+                  ))}
+                </div>
+              ) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-gray-900/50 dark:text-gray-400">No hotel details added.</p>}
+            </div>
+          )}
+
+          {activeTab === 'vehicles' && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Transport</h2>
+              {quotation.vehicles?.length ? (
+                <div className="grid gap-2 lg:grid-cols-2">
+                  {quotation.vehicles.map((vehicle, index) => (
+                    <article key={vehicle.id || index} className="rounded-xl border border-slate-200 p-3 dark:border-gray-700">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{vehicle.vehicle_name || 'Vehicle booking'}</h3>
+                        <span className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">{vehicle.vehicle_type || 'Vehicle'}</span>
+                      </div>
+                      <dl className="mt-3 grid grid-cols-2 gap-2">
+                        <DetailTile label="Start" value={formatDate(vehicle.start_date)} />
+                        <DetailTile label="End" value={formatDate(vehicle.end_date)} />
+                        <DetailTile label="Quantity" value={vehicle.quantity ?? 1} />
+                        <DetailTile label="Registration" value={vehicle.registration_number} />
+                        <DetailTile label="Pickup" value={vehicle.pickup_location} />
+                        <DetailTile label="Drop off" value={vehicle.drop_location} />
+                      </dl>
+                    </article>
+                  ))}
+                </div>
+              ) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-gray-900/50 dark:text-gray-400">No vehicle details added.</p>}
+            </div>
+          )}
+
+          {activeTab === 'itinerary' && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Day-by-day itinerary</h2>
+              {quotation.itinerary?.length ? (
+                <ol className="space-y-2">
+                  {quotation.itinerary.map((day, index) => (
+                    <li key={day.id || day.day_number || index} className="flex gap-3 rounded-xl border border-slate-200 p-3 dark:border-gray-700">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-50 text-xs font-bold text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300">{day.day_number || index + 1}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-start justify-between gap-1">
+                          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{day.title || 'Untitled day'}</h3>
+                          <span className="text-[11px] text-slate-500 dark:text-gray-400">{formatDate(day.date)}</span>
+                        </div>
+                        {day.description && <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-600 dark:text-gray-300">{day.description}</p>}
+                        <p className="mt-1 text-[11px] text-slate-500 dark:text-gray-400">{[day.overnight_location, day.meal_plan].filter(Boolean).join(' · ') || 'No overnight or meal details'}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-gray-900/50 dark:text-gray-400">No itinerary days added.</p>}
+            </div>
+          )}
+
+          {activeTab === 'pricing' && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Price breakdown</h2>
+              <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <DetailTile label="Subtotal" value={formatAmount(quotation.subtotal)} />
+                <DetailTile label="Discount" value={`− ${formatAmount(quotation.discount_amount)}`} />
+                <DetailTile label="Tax" value={formatAmount(quotation.tax_amount)} />
+                <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-900/50 dark:bg-cyan-950/30">
+                  <dt className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">Total</dt>
+                  <dd className="mt-1 text-base font-bold text-cyan-800 dark:text-cyan-200">{formatAmount(quotation.total_amount)}</dd>
+                </div>
+              </dl>
+            </div>
+          )}
+
+          {activeTab === 'notes' && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Notes and conditions</h2>
+              <dl className="grid gap-2 md:grid-cols-2">
+                {[
+                  ['Inclusion', quotation.inclusion],
+                  ['Exclusion', quotation.exclusion],
+                  ['Important notes', quotation.important_notes],
+                  ['Terms and conditions', quotation.terms_and_conditions],
+                  ['Rejection reason', quotation.rejected_reason],
+                ].map(([label, value]) => (
+                  <DetailTile key={label} label={label} value={value} />
+                ))}
+              </dl>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <Modal isOpen={isSendOpen} onClose={() => setIsSendOpen(false)} title="Send quotation" icon={Mail} size="sm" footer={<div className="flex justify-end gap-3"><button type="button" onClick={() => setIsSendOpen(false)} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700">Cancel</button><button type="submit" form="send-quotation-form" className="rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white">Send quotation</button></div>}><form id="send-quotation-form" onSubmit={sendQuotation} className="space-y-4"><p className="text-sm text-gray-500">The quotation will be sent to the recipient email below.</p><input type="email" required value={recipientEmail} onChange={(event) => setRecipientEmail(event.target.value)} className={inputClass} placeholder="customer@example.com" /></form></Modal>
+      <ConfirmDeleteModal isOpen={isDeleteOpen} onClose={() => { if (!deleting) setIsDeleteOpen(false); }} onConfirm={deleteQuotation} confirming={deleting} itemLabel={quotation.quotation_code || 'this quotation'} title="Delete quotation" message="This quotation and its itinerary details will be permanently removed." />
+    </div>
+  );
 };
 
 export default QuotationDetails;

@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, CalendarDays, Download, Eye, FileText, Mail, Pencil, Plus, RefreshCw, Send, Trash2, UserRound } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Download, Eye, FileText, Mail, MoreHorizontal, Pencil, Plus, RefreshCw, Send, Trash2, UserRound } from 'lucide-react';
 import Modal from '../component/common/Modal';
 import ConfirmDeleteModal from '../component/common/ConfirmDeleteModal';
+import ActionMenu from '../component/common/ActionMenu';
 import CustomDatePicker from '../component/common/CustomDatePicker';
 import DragDropUpload from '../component/common/DragDropUpload';
 import MediaViewerModal from '../component/common/MediaViewerModal';
@@ -50,7 +51,7 @@ const relatedDetails = (item, type) => {
 
 const BookingField = ({ label, value }) => (
   <div className="min-w-0">
-    <dt className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</dt>
+    <dt className="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</dt>
     <dd className="mt-1 break-words text-sm font-semibold text-gray-800 dark:text-gray-100">
       {value === null || value === undefined || value === '' ? 'Not provided' : value}
     </dd>
@@ -59,10 +60,10 @@ const BookingField = ({ label, value }) => (
 
 const BookingStepHeading = ({ number, title, description }) => (
   <div className="mb-4 flex items-start gap-3">
-    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-sm font-bold text-white">{String(number).padStart(2, '0')}</span>
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-xs font-bold text-white">{String(number).padStart(2, '0')}</span>
     <div>
-      <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{title}</h2>
-      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</p>
+      <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">{title}</h2>
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{description}</p>
     </div>
   </div>
 );
@@ -346,6 +347,17 @@ const BookingDetails = () => {
   const hasVehicleTripItem = arrangementItems.some((item) => ['transport', 'transfer'].includes(String(item.item_type || '').toLowerCase()));
   const hasHotelVoucher = (booking.items || []).some((item) => relatedDetails(item, 'hotel'));
   const hasVehicleVoucher = (booking.items || []).some((item) => relatedDetails(item, 'vehicle'));
+  const handleStepKeyDown = (event, index) => {
+    let nextIndex;
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % bookingDetailSteps.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + bookingDetailSteps.length) % bookingDetailSteps.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = bookingDetailSteps.length - 1;
+    if (nextIndex === undefined) return;
+    event.preventDefault();
+    setActiveStep(nextIndex);
+    document.getElementById(`booking-tab-${nextIndex}`)?.focus();
+  };
 
   return (
     <>
@@ -354,48 +366,63 @@ const BookingDetails = () => {
         <div className="flex min-w-0 items-center gap-3">
           <button type="button" onClick={() => navigate('/bookings')} className="rounded-xl border border-gray-200 p-2 dark:border-gray-700" aria-label="Back to bookings"><ArrowLeft className="h-5 w-5" /></button>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-cyan-700 dark:text-cyan-300">{booking.booking_code || 'Booking details'}</p>
-            <h1 className="truncate text-2xl font-bold text-slate-900 dark:text-slate-100 sm:text-3xl">{customerName}</h1>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{[booking.destination_name, bookingDateRange].filter(Boolean).join(' - ') || 'Travel dates not set'} - {booking.status || 'TENTATIVE'}</p>
+            <p className="text-xs font-bold tracking-wide text-cyan-700 dark:text-cyan-300">{booking.booking_code || 'Booking details'}</p>
+            <h1 className="truncate text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-2xl">{customerName}</h1>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{[booking.destination_name, bookingDateRange].filter(Boolean).join(' - ') || 'Travel dates not set'} - {booking.status || 'TENTATIVE'}</p>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={loadBooking} className="rounded-xl border border-gray-200 p-2.5 text-gray-700 dark:border-gray-700 dark:text-gray-200" title="Refresh booking" aria-label="Refresh booking"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /></button>
-          <Link to="/bookings/calendar" className="rounded-xl border border-gray-200 p-2.5 text-gray-700 dark:border-gray-700 dark:text-gray-200" title="Calendar" aria-label="Booking calendar"><CalendarDays className="h-4 w-4" /></Link>
-          <button type="button" aria-label="Update booking status" title="Update booking status" onClick={() => setIsStatusOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 p-2.5 text-sm font-semibold text-white sm:px-3"><Pencil className="h-4 w-4" /><span className="hidden sm:inline">Update status</span></button>
-          <button type="button" onClick={() => { setRecipientEmail(booking.customer?.email || ''); setIsSendOpen(true); }} className="rounded-xl border border-gray-200 p-2.5 text-gray-700 dark:border-gray-700 dark:text-gray-200" title="Send booking" aria-label="Send booking"><Send className="h-4 w-4" /></button>
-          <button type="button" onClick={downloadPdf} className="rounded-xl border border-gray-200 p-2.5 text-gray-700 dark:border-gray-700 dark:text-gray-200" title="Download PDF" aria-label="Download booking PDF"><Download className="h-4 w-4" /></button>
+        <div className="flex shrink-0 items-center justify-end gap-2">
+          <button type="button" aria-label="Update booking status" title="Update booking status" onClick={() => setIsStatusOpen(true)} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-cyan-600 px-3 text-sm font-semibold text-white"><Pencil className="h-4 w-4" /><span className="hidden sm:inline">Update status</span></button>
+          <ActionMenu
+            menuId={`booking-actions-${booking.id || booking.booking_code}`}
+            actions={[
+              { label: 'Refresh booking', icon: <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />, onClick: loadBooking },
+              { label: 'Booking calendar', icon: <CalendarDays className="h-4 w-4" />, onClick: () => navigate('/bookings/calendar') },
+              { label: 'Send booking', icon: <Send className="h-4 w-4" />, onClick: () => { setRecipientEmail(booking.customer?.email || ''); setIsSendOpen(true); } },
+              { label: 'Download PDF', icon: <Download className="h-4 w-4" />, onClick: downloadPdf },
+            ]}
+            trigger={(
+              <button
+                type="button"
+                aria-label="More booking actions"
+                title="More actions"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 text-gray-700 dark:border-gray-700 dark:text-gray-200"
+              >
+                <MoreHorizontal className="h-5 w-5" />
+              </button>
+            )}
+          />
         </div>
       </div>
 
-      <nav aria-label="Booking detail steps" className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
-        <ol className="flex gap-2 overflow-x-auto pb-1">
+      <nav aria-label="Booking detail steps">
+        <div className="overflow-x-auto border-b border-slate-200 dark:border-gray-700">
+          <div role="tablist" aria-label="Booking details sections" className="flex min-w-max gap-1">
           {bookingDetailSteps.map((step, index) => (
-            <li key={step}>
               <button
+                key={step}
+                id={`booking-tab-${index}`}
                 type="button"
+                role="tab"
+                aria-selected={activeStep === index}
+                aria-controls="booking-details-panel"
+                tabIndex={activeStep === index ? 0 : -1}
                 onClick={() => setActiveStep(index)}
-                aria-current={activeStep === index ? 'step' : undefined}
-                className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
+                onKeyDown={(event) => handleStepKeyDown(event, index)}
+                className={`relative flex min-h-11 items-center gap-2 whitespace-nowrap px-3 text-xs font-semibold transition ${
                   activeStep === index
-                    ? 'bg-cyan-600 text-white'
-                    : 'text-gray-600 hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-700'
-                } whitespace-nowrap`}
+                    ? 'text-cyan-700 after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-cyan-600 dark:text-cyan-300 dark:after:bg-cyan-400'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-gray-200'
+                }`}
               >
-                <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
-                  activeStep === index ? 'bg-white/20' : 'bg-slate-100 dark:bg-gray-700'
-                }`}>{index + 1}</span>
-                <span>{step}</span>
+                {step}
               </button>
-            </li>
           ))}
-        </ol>
-        <p className="mt-2 px-2 text-xs text-gray-500 dark:text-gray-400">
-          Step {activeStep + 1} of {bookingDetailSteps.length}: {bookingDetailSteps[activeStep]}
-        </p>
+          </div>
+        </div>
       </nav>
 
-      <div id="booking-details-panel" aria-label="Booking details" className="space-y-6">
+      <div id="booking-details-panel" role="tabpanel" aria-labelledby={`booking-tab-${activeStep}`} tabIndex={0} className="space-y-6">
         {activeStep === 0 && (
         <div>
           <BookingStepHeading number={1} title="Booking overview" description="Booking status, customer, trip, and key financial totals." />
@@ -405,7 +432,7 @@ const BookingDetails = () => {
               ['Paid amount', formatAmount(booking.paid_amount)],
               ['Due amount', formatAmount(booking.due_amount)],
               ['Profit margin', `${booking.profit_margin ?? 0}%`],
-            ].map(([label, value]) => <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p><p className="mt-2 text-xl font-bold text-slate-900 dark:text-slate-100">{value}</p></div>)}
+            ].map(([label, value]) => <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><p className="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p><p className="mt-2 text-sm font-bold text-slate-900 dark:text-slate-100">{value}</p></div>)}
           </div>
         </div>
         )}
@@ -415,7 +442,7 @@ const BookingDetails = () => {
               <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                 <div className="mb-5 flex items-center gap-3">
                   {booking.variant?.banner?.image ? <img src={booking.variant.banner.image} alt="" className="h-16 w-20 rounded-xl object-cover" /> : <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"><CalendarDays className="h-6 w-6" /></span>}
-                  <div className="min-w-0"><h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{booking.package?.name || booking.variant?.name || 'Trip details'}</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{booking.variant?.name || booking.destination_name || 'Travel package'}{booking.package?.season ? ` - ${booking.package.season}` : ''}</p></div>
+                  <div className="min-w-0"><h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">{booking.package?.name || booking.variant?.name || 'Trip details'}</h2><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{booking.variant?.name || booking.destination_name || 'Travel package'}{booking.package?.season ? ` - ${booking.package.season}` : ''}</p></div>
                 </div>
                 <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
                   <BookingField label="Customer" value={customerName} /><BookingField label="Email" value={booking.customer?.email || booking.email} /><BookingField label="Mobile" value={booking.customer?.mobile || booking.customer_mobile || booking.mobile} /><BookingField label="Destination" value={booking.destination_name} />
@@ -430,15 +457,15 @@ const BookingDetails = () => {
               <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-sm font-bold text-white">02</span>
-                    <div><h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Travellers <span className="ml-1 text-sm font-medium text-gray-500 dark:text-gray-400">({booking.travellers?.length || 0})</span></h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Passenger details and primary traveller.</p></div>
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-xs font-bold text-white">02</span>
+                    <div><h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Travellers <span className="ml-1 text-xs font-medium text-gray-500 dark:text-gray-400">({booking.travellers?.length || 0})</span></h2><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Passenger details and primary traveller.</p></div>
                   </div>
                   <button type="button" onClick={() => { setTraveller(emptyTraveller); setEditingTravellerId(null); setIsTravellerOpen(true); }} className="inline-flex items-center gap-1 text-sm font-semibold text-cyan-700 dark:text-cyan-300"><Plus className="h-4 w-4" /> Add traveller</button>
                 </div>
                 {(booking.travellers || []).length === 0 ? <p className="text-sm text-gray-500 dark:text-gray-400">No travellers added.</p> : <div className="grid gap-3 md:grid-cols-2">{booking.travellers.map((travellerItem) => (
                   <div key={travellerItem.id} className="flex min-w-0 items-start gap-3 rounded-xl border border-gray-100 p-4 dark:border-gray-700">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"><UserRound className="h-5 w-5" /></span>
-                    <div className="min-w-0 flex-1"><p className="truncate font-semibold text-slate-900 dark:text-slate-100">{travellerItem.full_name || 'Unnamed traveller'} {travellerItem.is_primary && <span className="ml-1 rounded-full bg-cyan-50 px-2 py-0.5 text-xs text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300">Primary</span>}</p><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{[travellerItem.traveler_type || travellerItem.relationship_to_customer, travellerItem.gender, travellerItem.date_of_birth && `Born ${formatBookingDate(travellerItem.date_of_birth)}`].filter(Boolean).join(' - ') || 'Traveller details'}</p><p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">{travellerItem.mobile || travellerItem.email || 'No contact details'}</p></div>
+                    <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{travellerItem.full_name || 'Unnamed traveller'} {travellerItem.is_primary && <span className="ml-1 rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300">Primary</span>}</p><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{[travellerItem.traveler_type || travellerItem.relationship_to_customer, travellerItem.gender, travellerItem.date_of_birth && `Born ${formatBookingDate(travellerItem.date_of_birth)}`].filter(Boolean).join(' - ') || 'Traveller details'}</p><p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">{travellerItem.mobile || travellerItem.email || 'No contact details'}</p></div>
                     <button type="button" onClick={() => setTravellerDeleteTarget(travellerItem)} className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-rose-600 dark:hover:bg-red-950/30" title="Delete traveller" aria-label={`Delete ${travellerItem.full_name || 'traveller'}`}><Trash2 className="h-4 w-4" /></button>
                   </div>
                 ))}</div>}
@@ -447,27 +474,27 @@ const BookingDetails = () => {
 
               {activeStep === 2 && (
               <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <div className="mb-4 flex items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-sm font-bold text-white">03</span><div><h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Trip itinerary</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{booking.itinerary?.length || 0} itinerary days in travel order.</p></div></div>
+                <div className="mb-4 flex items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-xs font-bold text-white">03</span><div><h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Trip itinerary</h2><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{booking.itinerary?.length || 0} itinerary days in travel order.</p></div></div>
                 {(booking.itinerary || []).length === 0 ? <p className="text-sm text-gray-500 dark:text-gray-400">No itinerary details available.</p> : <ol>{booking.itinerary.map((day) => (
-                  <li key={day.id} className="relative border-l border-cyan-200 pb-5 pl-5 last:border-0 last:pb-0 dark:border-cyan-900"><span className="absolute -left-1.5 top-1 h-3 w-3 rounded-full border-2 border-white bg-cyan-600 dark:border-gray-800" /><p className="text-xs font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">Day {day.day_number} - {formatBookingDate(day.date)}</p><h3 className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{day.title || 'Itinerary day'}</h3>{day.description && <p className="mt-1 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">{day.description}</p>}{(day.overnight_location || day.meal_plan) && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{[day.overnight_location, day.meal_plan].filter(Boolean).join(' - ')}</p>}</li>
+                  <li key={day.id} className="relative border-l border-cyan-200 pb-5 pl-5 last:border-0 last:pb-0 dark:border-cyan-900"><span className="absolute -left-1.5 top-1 h-3 w-3 rounded-full border-2 border-white bg-cyan-600 dark:border-gray-800" /><p className="text-xs font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">Day {day.day_number} - {formatBookingDate(day.date)}</p><h3 className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">{day.title || 'Itinerary day'}</h3>{day.description && <p className="mt-1 whitespace-pre-wrap text-xs text-gray-600 dark:text-gray-300">{day.description}</p>}{(day.overnight_location || day.meal_plan) && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{[day.overnight_location, day.meal_plan].filter(Boolean).join(' - ')}</p>}</li>
                 ))}</ol>}
               </section>
               )}
               {activeStep === 3 && (
               <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <div className="mb-4 flex items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-sm font-bold text-white">04</span><div><h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Guests & payment</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Passenger counts and booking totals.</p></div></div>
+                <div className="mb-4 flex items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-xs font-bold text-white">04</span><div><h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Guests & payment</h2><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Passenger counts and booking totals.</p></div></div>
                 <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3"><BookingField label="Adults" value={booking.adult_count ?? 0} /><BookingField label="Children" value={booking.child_count ?? 0} /><BookingField label="Seniors" value={booking.senior_count ?? 0} /><BookingField label="Subtotal" value={formatAmount(booking.subtotal)} /><BookingField label="Discount" value={formatAmount(booking.discount_amount)} /><BookingField label="Gross profit" value={formatAmount(booking.gross_profit)} /></dl>
               </section>
               )}
               {activeStep === 4 && (
               <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <div className="mb-4 flex items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-sm font-bold text-white">05</span><div><h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Booking items <span className="ml-1 text-sm font-medium text-gray-500 dark:text-gray-400">({booking.items?.length || 0})</span></h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Services and extras attached to this booking.</p></div></div>
+                <div className="mb-4 flex items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-xs font-bold text-white">05</span><div><h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Booking items <span className="ml-1 text-xs font-medium text-gray-500 dark:text-gray-400">({booking.items?.length || 0})</span></h2><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Services and extras attached to this booking.</p></div></div>
                 {(booking.items || []).length === 0 ? <p className="text-sm text-gray-500 dark:text-gray-400">No additional booking items.</p> : <ul className="grid gap-3 sm:grid-cols-2">{booking.items.map((item, index) => <li key={item.id || index} className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-gray-900/50"><p className="font-semibold text-slate-900 dark:text-slate-100">{item.name || item.title || 'Booking item'}</p>{item.description && <p className="mt-1 whitespace-pre-wrap text-xs text-gray-500 dark:text-gray-400">{item.description}</p>}{(item.type || item.category || item.item_type) && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.type || item.category || item.item_type}</p>}{(Array.isArray(item.hotel) ? item.hotel : item.hotel ? [item.hotel] : []).map((hotel, hotelIndex) => <div key={hotel.id || hotelIndex} className="mt-3 rounded-lg border border-slate-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800"><p className="font-semibold">Hotel: {hotel.hotel_name || 'Hotel stay'}</p><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{[hotel.check_in && `Check-in ${formatBookingDate(hotel.check_in, true)}`, hotel.check_out && `Check-out ${formatBookingDate(hotel.check_out, true)}`, hotel.nights != null && `${hotel.nights} nights`, hotel.room_count != null && `${hotel.room_count} rooms`, hotel.room_type].filter(Boolean).join(' · ')}</p></div>)}{(Array.isArray(item.vehicle) ? item.vehicle : item.vehicle ? [item.vehicle] : []).map((vehicle, vehicleIndex) => <div key={vehicle.id || vehicleIndex} className="mt-3 rounded-lg border border-slate-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800"><p className="font-semibold">Vehicle: {vehicle.vehicle_name || 'Vehicle booking'}</p><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{[vehicle.vehicle_type, vehicle.start_date && `Start ${formatBookingDate(vehicle.start_date, true)}`, vehicle.end_date && `End ${formatBookingDate(vehicle.end_date, true)}`, vehicle.rental_minutes != null && `${vehicle.rental_minutes} minutes`, vehicle.quantity != null && `Quantity ${vehicle.quantity}`].filter(Boolean).join(' · ')}</p></div>)}</li>)}</ul>}
               </section>
               )}
               {activeStep === 5 && (
               <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-sm font-bold text-white">06</span><div><h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Hotel & vehicle arrangements</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Review or update supplier details for each trip item.</p></div></div><div className="flex flex-wrap gap-2">{['hotel', 'vehicle'].map((type) => { const hasVoucher = type === 'hotel' ? hasHotelVoucher : hasVehicleVoucher; return <button key={type} type="button" onClick={() => downloadVoucher(type)} disabled={!hasVoucher} title={hasVoucher ? `Download ${type} voucher` : `Add ${type} details before downloading a voucher`} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:text-gray-200"><Download className="h-4 w-4" /> {type === 'hotel' ? 'Hotel' : 'Vehicle'} voucher</button>; })}</div></div>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-xs font-bold text-white">06</span><div><h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Hotel & vehicle arrangements</h2><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Review or update supplier details for each trip item.</p></div></div><div className="flex flex-wrap gap-2">{['hotel', 'vehicle'].map((type) => { const hasVoucher = type === 'hotel' ? hasHotelVoucher : hasVehicleVoucher; return <button key={type} type="button" onClick={() => downloadVoucher(type)} disabled={!hasVoucher} title={hasVoucher ? `Download ${type} voucher` : `Add ${type} details before downloading a voucher`} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:text-gray-200"><Download className="h-4 w-4" /> {type === 'hotel' ? 'Hotel' : 'Vehicle'} voucher</button>; })}</div></div>
                 {!hasHotelTripItem && <button type="button" onClick={() => openTripItemDetails({ id: 'new', name: '' }, 'hotel')} className="mr-2 mb-3 rounded-lg border border-cyan-200 px-3 py-2 text-sm font-semibold text-cyan-700 dark:border-cyan-900/50 dark:text-cyan-300">Add hotel details</button>}
                 {!hasVehicleTripItem && <button type="button" onClick={() => openTripItemDetails({ id: 'new', name: '' }, 'vehicle')} className="mb-3 rounded-lg border border-cyan-200 px-3 py-2 text-sm font-semibold text-cyan-700 dark:border-cyan-900/50 dark:text-cyan-300">Add vehicle details</button>}
                 {arrangementItems.length === 0 ? <p className="text-sm text-gray-500 dark:text-gray-400">Add hotel or vehicle details above to create the first trip item.</p> : (
@@ -493,15 +520,14 @@ const BookingDetails = () => {
               )}
               {activeStep === 6 && (
               <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <div className="mb-4 flex items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-sm font-bold text-white">07</span><div><h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Status history</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Changes made to the booking over time.</p></div></div>
+                <div className="mb-4 flex items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-xs font-bold text-white">07</span><div><h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Status history</h2><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Changes made to the booking over time.</p></div></div>
                 {(booking.status_history || []).length === 0 ? <p className="text-sm text-gray-500 dark:text-gray-400">No status history available.</p> : <ol className="space-y-4">{booking.status_history.map((history) => <li key={history.id} className="border-l-2 border-cyan-500 pl-3"><p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{history.from_status || 'Created'} to {history.to_status}</p><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{history.reason || 'No reason provided'}</p><p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{formatBookingDate(history.changed_at || history.created_at, true)}</p></li>)}</ol>}
               </section>
               )}
           </div>
-        </div>
         {activeStep === 7 && (
-          <section id="booking-documents-panel" aria-label="Booking documents" className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-sm font-bold text-white">08</span><div><h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Booking documents <span className="ml-1 text-sm font-medium text-gray-500 dark:text-gray-400">({documents.length})</span></h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Tickets, vouchers, and other booking files.</p></div></div><button type="button" onClick={() => setIsDocumentUploadOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-700"><Plus className="h-4 w-4" /> Upload document</button></div>
+          <section aria-label="Booking documents" className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-xs font-bold text-white">08</span><div><h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Booking documents <span className="ml-1 text-xs font-medium text-gray-500 dark:text-gray-400">({documents.length})</span></h2><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Tickets, vouchers, and other booking files.</p></div></div><button type="button" onClick={() => setIsDocumentUploadOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-700"><Plus className="h-4 w-4" /> Upload document</button></div>
           {documentsLoading ? (
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading booking documents...</p>
           ) : documents.length === 0 ? (
@@ -537,6 +563,7 @@ const BookingDetails = () => {
           )}
           </section>
         )}
+      </div>
         <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
           <button type="button" onClick={() => setActiveStep((step) => Math.max(0, step - 1))} disabled={activeStep === 0} className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:text-gray-200">
             Previous
