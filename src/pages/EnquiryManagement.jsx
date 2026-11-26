@@ -940,9 +940,16 @@ const EnquiryManagement = () => {
                       {/* Enquiry Code & Type */}
                       <td className="px-4 py-4">
                         <div className="flex flex-col">
-                          <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              navigate(`/enquiries/${enq.id}/lead`, { state: { enquiry: enq } });
+                            }}
+                            className="w-fit font-mono text-xs font-bold text-indigo-600 hover:underline dark:text-indigo-400"
+                          >
                             {enq.enquiry_code || '—'}
-                          </span>
+                          </button>
                           <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 mt-0.5">
                             {enq.enquiry_type?.replace(/_/g, ' ') || 'Fixed Tour'}
                           </span>

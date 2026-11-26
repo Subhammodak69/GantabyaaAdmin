@@ -6,6 +6,8 @@ import {
   ArrowRight,
   ArrowLeft,
   Calendar,
+  ChevronDown,
+  ChevronUp,
   Check,
   FileText,
   Filter,
@@ -35,7 +37,7 @@ const emptyItinerary = { day_number: 1, date: '', title: '', description: '', ov
 const defaultForm = {
   customer_id: '', enquiry_id: '', package_id: '', variant_id: '', destination_id: '', tour_name: '',
   travel_date: '', return_date: '', subtotal: '0', discount_amount: '0', tax_amount: '0', total_amount: '0',
-  valid_until: '', terms_and_conditions: '', important_notes: '', inclusion: '', exclusion: '',
+  valid_until: '', terms_and_conditions: '', important_notes: '', inclusion: '', exclusion: '', save_as_draft: null,
   items: [], hotels: [], vehicles: [], itinerary: [],
 };
 
@@ -153,6 +155,7 @@ const QuotationManagement = () => {
   const [referencesLoading, setReferencesLoading] = useState(false);
   const [variantsLoading, setVariantsLoading] = useState(false);
   const [itineraryLoading, setItineraryLoading] = useState(false);
+  const [expandedItineraryDays, setExpandedItineraryDays] = useState(() => new Set());
   const [tripSelectionType, setTripSelectionType] = useState('DESTINATION');
 
   const quotationSteps = [
@@ -229,21 +232,23 @@ const QuotationManagement = () => {
   const loadReferenceOptions = useCallback(async () => {
     setReferencesLoading(true);
     try {
-      const enquiriesResponse = await apiCall('/api/v1/admin/enquiries?page=1&page_size=100', 'GET');
-      const [packagesResponse, destinationsResponse, hotelsResponse, vehiclesResponse] = await Promise.all([
+      const [enquiriesResponse, packagesResponse, destinationsResponse, hotelsResponse, vehiclesResponse] = await Promise.all([
+        isCreatePage ? Promise.resolve(null) : apiCall('/api/v1/admin/enquiries?page=1&page_size=100', 'GET'),
         apiCall('/api/v1/admin/tour-packages?page=1&page_size=100', 'GET'),
         apiCall('/api/v1/admin/destinations?page=1&page_size=100', 'GET'),
         apiCall('/api/v1/admin/hotels?page=1&page_size=100', 'GET'),
         apiCall('/api/v1/admin/vehicles?page=1&page_size=100', 'GET'),
       ]);
-      const enquiriesPayload = await enquiriesResponse.json().catch(() => ({}));
+      const enquiriesPayload = enquiriesResponse
+        ? await enquiriesResponse.json().catch(() => ({}))
+        : {};
       const [packagesPayload, destinationsPayload, hotelsPayload, vehiclesPayload] = await Promise.all([
         packagesResponse.json().catch(() => ({})),
         destinationsResponse.json().catch(() => ({})),
         hotelsResponse.json().catch(() => ({})),
         vehiclesResponse.json().catch(() => ({})),
       ]);
-      if (enquiriesResponse.ok) {
+      if (enquiriesResponse?.ok) {
         setEnquiryOptions((Array.isArray(enquiriesPayload?.data) ? enquiriesPayload.data : []).map((enquiry) => ({
           value: enquiry.id,
           label: [enquiry.enquiry_code, enquiry.enquirer_name || enquiry.name || enquiry.customer_name || 'Unnamed enquirer', enquiry.enquirer_phone || enquiry.phone || enquiry.mobile, enquiry.email, enquiry.enquiry_type, enquiry.travel_date ? new Date(enquiry.travel_date).toLocaleDateString() : null].filter(Boolean).join(' - '),
@@ -280,7 +285,7 @@ const QuotationManagement = () => {
     } catch (error) {
       handleApiError(error, 'Unable to load enquiry options');
     } finally { setReferencesLoading(false); }
-  }, []);
+  }, [isCreatePage]);
 
   useEffect(() => { loadReferenceOptions(); }, [loadReferenceOptions]);
 
@@ -314,6 +319,7 @@ const QuotationManagement = () => {
   const loadVariantDetails = useCallback(async (packageId, variantId, variant = null) => {
     if (!packageId || !variantId) {
       setForm((current) => ({ ...current, itinerary: [], travel_date: '', return_date: '' }));
+      setExpandedItineraryDays(new Set());
       return;
     }
     setItineraryLoading(true);
@@ -331,6 +337,7 @@ const QuotationManagement = () => {
       const departures = getVariantDates(detail, variant);
       const inclusion = getVariantQuotationText(detail, 'inclusion');
       const exclusion = getVariantQuotationText(detail, 'exclusion');
+      setExpandedItineraryDays(new Set());
       setForm((current) => {
         const departure = getPreferredDeparture(departures, current.travel_date);
         const travelDate = departure?.departure_date || departure?.date || departure?.start_date || departure?.travel_date
@@ -433,11 +440,19 @@ const QuotationManagement = () => {
     return { ...current, [field]: nextRows };
   });
   const addArrayItem = (field, template) => setForm((current) => ({ ...current, [field]: [...current[field], { ...template }] }));
-  const removeArrayItem = (field, index) => setForm((current) => ({ ...current, [field]: current[field].filter((_, itemIndex) => itemIndex !== index) }));
+  const removeArrayItem = (field, index) => {
+    setForm((current) => ({ ...current, [field]: current[field].filter((_, itemIndex) => itemIndex !== index) }));
+    if (field === 'itinerary') {
+      setExpandedItineraryDays((current) => new Set(
+        [...current].filter((dayIndex) => dayIndex !== index).map((dayIndex) => dayIndex > index ? dayIndex - 1 : dayIndex)
+      ));
+    }
+  };
 
   const openCreate = () => {
     createSubmitRequestedRef.current = false;
     setForm(defaultForm);
+    setExpandedItineraryDays(new Set());
     setTripSelectionType('DESTINATION');
     setCreateStep(1);
     navigate(`/quotations/new${location.search}`);
@@ -445,6 +460,7 @@ const QuotationManagement = () => {
   const closeCreate = () => {
     createSubmitRequestedRef.current = false;
     setForm(defaultForm);
+    setExpandedItineraryDays(new Set());
     setTripSelectionType('DESTINATION');
     setCreateStep(1);
     navigate(`/quotations${location.search}`);
@@ -452,6 +468,7 @@ const QuotationManagement = () => {
   const isCreateStepValid = (step) => {
     if (step === 1) return Boolean(form.enquiry_id.trim());
     if (step === 3) return true;
+    if (step === 4) return typeof form.save_as_draft === 'boolean';
     return true;
   };
   const goNextStep = () => {
@@ -465,6 +482,7 @@ const QuotationManagement = () => {
     createSubmitRequestedRef.current = false;
     if (createStep !== quotationSteps.length || !isCreateStepValid(quotationSteps.length)) return;
     if (!form.enquiry_id.trim()) { toast.error('Select an enquiry first'); return; }
+    if (typeof form.save_as_draft !== 'boolean') { toast.error('Choose whether to save this quotation as a draft.'); return; }
     const invalidItem = form.items.find((item) => !item.name.trim() || Number(item.quantity) < 1 || Number(item.unit_price) < 0);
     const invalidHotel = form.hotels.find((hotel) => !hotel.hotel_name.trim() || !hotel.check_in || !hotel.check_out || Number(hotel.nights) < 1 || Number(hotel.room_count) < 1);
     const invalidVehicle = form.vehicles.find((vehicle) => !vehicle.vehicle_name.trim() || !vehicle.start_date || !vehicle.end_date || Number(vehicle.rental_minutes) < 1 || Number(vehicle.quantity) < 1);
@@ -485,7 +503,7 @@ const QuotationManagement = () => {
       const payload = {
         ...form,
         tour_name: form.tour_name.trim() || null,
-        save_as_draft: true,
+        save_as_draft: form.save_as_draft,
         subtotal: Number(form.subtotal) || 0,
         discount_amount: Number(form.discount_amount) || 0,
         tax_amount: Number(form.tax_amount) || 0,
@@ -612,15 +630,71 @@ const QuotationManagement = () => {
       </div>)}
     </section>
   );
+  const allItineraryDaysExpanded = form.itinerary.length > 0
+    && form.itinerary.every((_, index) => expandedItineraryDays.has(index));
+  const toggleAllItineraryDays = () => setExpandedItineraryDays(
+    allItineraryDaysExpanded ? new Set() : new Set(form.itinerary.map((_, index) => index))
+  );
+  const toggleItineraryDay = (index) => setExpandedItineraryDays((current) => {
+    const next = new Set(current);
+    if (next.has(index)) next.delete(index);
+    else next.add(index);
+    return next;
+  });
   const renderItineraryRows = () => (
     <section className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-gray-700">
-      <div className="flex items-center justify-between"><div><h3 className="font-semibold text-slate-900 dark:text-slate-100">Itinerary</h3>{itineraryLoading && <p className="text-xs text-gray-500">Loading package itinerary...</p>}</div><button type="button" onClick={() => addArrayItem('itinerary', { ...emptyItinerary, day_number: form.itinerary.length + 1, sort_order: form.itinerary.length })} className="text-sm font-semibold text-cyan-700">Add day</button></div>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-slate-900 dark:text-slate-100">Itinerary</h3>
+          {itineraryLoading && <p className="text-xs text-gray-500">Loading package itinerary...</p>}
+        </div>
+        <div className="flex items-center gap-3">
+          <button type="button" disabled={!form.itinerary.length} onClick={toggleAllItineraryDays} className="text-sm font-semibold text-cyan-700 disabled:cursor-not-allowed disabled:opacity-50">
+            {allItineraryDaysExpanded ? 'Collapse all' : 'Expand all'}
+          </button>
+          <button type="button" onClick={() => addArrayItem('itinerary', { ...emptyItinerary, day_number: form.itinerary.length + 1, sort_order: form.itinerary.length })} className="text-sm font-semibold text-cyan-700">Add day</button>
+        </div>
+      </div>
       {form.itinerary.length === 0 && <p className="text-sm text-gray-500">No itinerary days added.</p>}
-      {form.itinerary.map((day, index) => <div key={`itinerary-${index}`} className="grid gap-3 rounded-xl bg-slate-50 p-3 dark:bg-gray-900/50 md:grid-cols-2">
-        {['day_number', 'title', 'date', 'overnight_location', 'meal_plan'].map((key) => <div key={key}><label className={labelClass}>{prettyLabel(key)}</label>{key === 'date' ? <CustomDatePicker value={day[key] || ''} onChange={(value) => updateArrayItem('itinerary', index, key, value)} /> : <input type="text" inputMode={key === 'day_number' ? 'decimal' : undefined} value={day[key] ?? ''} onChange={(event) => updateArrayItem('itinerary', index, key, key === 'day_number' ? numericValue(event.target.value) : event.target.value)} className={inputClass} />}</div>)}
-        <div className="md:col-span-2"><label className={labelClass}>Description</label><textarea value={day.description || ''} onChange={(event) => updateArrayItem('itinerary', index, 'description', event.target.value)} className={`${inputClass} min-h-[90px]`} /></div>
-        <button type="button" onClick={() => removeArrayItem('itinerary', index)} className="justify-self-start text-sm font-medium text-rose-600">Remove</button>
-      </div>)}
+      {form.itinerary.map((day, index) => {
+        const isExpanded = expandedItineraryDays.has(index);
+        const detailsId = `quotation-itinerary-day-${index}-details`;
+        const summary = [
+          day.date ? formatDate(day.date) : null,
+          day.overnight_location,
+          day.meal_plan,
+        ].filter(Boolean).join(' · ');
+        return (
+          <div key={`itinerary-${index}`} className="overflow-hidden rounded-xl bg-slate-50 dark:bg-gray-900/50">
+            <div className="flex items-center justify-between gap-3 p-3">
+              <button
+                type="button"
+                aria-expanded={isExpanded}
+                aria-controls={detailsId}
+                onClick={() => toggleItineraryDay(index)}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+              >
+                {isExpanded ? <ChevronUp size={16} className="shrink-0 text-cyan-700" /> : <ChevronDown size={16} className="shrink-0 text-cyan-700" />}
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    Day {day.day_number || index + 1}: {day.title || 'Untitled day'}
+                  </span>
+                  <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+                    {summary || 'Click to view day details'}
+                  </span>
+                </span>
+              </button>
+              <button type="button" onClick={() => removeArrayItem('itinerary', index)} className="shrink-0 text-sm font-medium text-rose-600">Remove</button>
+            </div>
+            {isExpanded && (
+              <div id={detailsId} className="grid gap-3 px-3 pb-3 md:grid-cols-2">
+                {['day_number', 'title', 'date', 'overnight_location', 'meal_plan'].map((key) => <div key={key}><label className={labelClass}>{prettyLabel(key)}</label>{key === 'date' ? <CustomDatePicker value={day[key] || ''} onChange={(value) => updateArrayItem('itinerary', index, key, value)} /> : <input type="text" inputMode={key === 'day_number' ? 'decimal' : undefined} value={day[key] ?? ''} onChange={(event) => updateArrayItem('itinerary', index, key, key === 'day_number' ? numericValue(event.target.value) : event.target.value)} className={inputClass} />}</div>)}
+                <div className="md:col-span-2"><label className={labelClass}>Description</label><textarea value={day.description || ''} onChange={(event) => updateArrayItem('itinerary', index, 'description', event.target.value)} className={`${inputClass} min-h-[90px]`} /></div>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </section>
   );
 
@@ -959,7 +1033,57 @@ const QuotationManagement = () => {
           loadVariantItinerary(variantId);
         }} isClearable placeholder={form.package_id ? 'Search variant' : 'Select package first'} menuPlacement="auto" /></div></> : <div><label className={labelClass}>Destination</label><SelectField options={destinationOptions} isLoading={referencesLoading} isSearchable value={destinationOptions.find((option) => option.value === form.destination_id) || null} onChange={(option) => { setTripSelectionType('DESTINATION'); setForm((current) => ({ ...current, destination_id: option?.value || '', package_id: '', variant_id: '', itinerary: [] })); }} isClearable placeholder="Search destination" menuPlacement="auto" /></div>}</div></div>}
         {createStep === 3 && <div className="space-y-5"><div><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Quotation components</h3><p className="text-sm text-gray-500">Add line items, accommodation, transport, and the itinerary.</p></div>{renderNestedRows('items', 'Quotation items', emptyLineItem, [['item_type', 'Item type', 'select'], ['name', 'Name'], ['description', 'Description'], ['quantity', 'Quantity', 'number'], ['unit_price', 'Unit price', 'number'], ['total_price', 'Total price', 'calculated']])}{renderHotelRows()}{renderVehicleRows()}{renderItineraryRows()}</div>}
-        {createStep === 4 && <div className="space-y-4"><div><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Pricing and notes</h3><p className="text-sm text-gray-500">Set the quotation totals and customer-facing content.</p></div><div className="grid gap-4 md:grid-cols-4">{renderInput('Subtotal', 'subtotal', 'number')}{renderInput('Discount', 'discount_amount', 'number')}{renderInput('Tax', 'tax_amount', 'number')}{renderInput('Total amount', 'total_amount', 'number')}</div><div className="grid gap-4 md:grid-cols-2">{['terms_and_conditions', 'important_notes', 'inclusion', 'exclusion'].map((field) => <div key={field}><label className={labelClass}>{field.replaceAll('_', ' ')}</label><textarea value={form[field]} onChange={(event) => updateForm(field, event.target.value)} className={`${inputClass} min-h-[100px]`} /></div>)}</div></div>}
+        {createStep === 4 && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Pricing and notes</h3>
+              <p className="text-sm text-gray-500">Set the quotation totals and customer-facing content.</p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-4">
+              {renderInput('Subtotal', 'subtotal', 'number')}
+              {renderInput('Discount', 'discount_amount', 'number')}
+              {renderInput('Tax', 'tax_amount', 'number')}
+              {renderInput('Total amount', 'total_amount', 'number')}
+            </div>
+            <fieldset className="space-y-2">
+              <legend className={labelClass}>Save as draft?</legend>
+              <p className="text-xs text-gray-500">Choose whether to save this quotation as a draft.</p>
+              <div className="flex flex-wrap gap-3">
+                {[{ value: true, label: 'Yes' }, { value: false, label: 'No' }].map((option) => (
+                  <label
+                    key={String(option.value)}
+                    className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium ${
+                      form.save_as_draft === option.value
+                        ? 'border-cyan-500 bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300'
+                        : 'border-gray-200 text-gray-700 dark:border-gray-700 dark:text-gray-200'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="save_as_draft"
+                      checked={form.save_as_draft === option.value}
+                      onChange={() => updateForm('save_as_draft', option.value)}
+                      required
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <div className="grid gap-4 md:grid-cols-2">
+              {['terms_and_conditions', 'important_notes', 'inclusion', 'exclusion'].map((field) => (
+                <div key={field}>
+                  <label className={labelClass}>{field.replaceAll('_', ' ')}</label>
+                  <textarea
+                    value={form[field]}
+                    onChange={(event) => updateForm(field, event.target.value)}
+                    className={`${inputClass} min-h-[100px]`}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </form>
     </ManagementWizardPage>}
     <ConfirmDeleteModal isOpen={isDeleteOpen} onClose={() => { if (!deleting) { setIsDeleteOpen(false); setDeleteTarget(null); } }} onConfirm={confirmDelete} confirming={deleting} itemLabel={deleteTarget?.quotation_code || 'this quotation'} title="Delete quotation" message="This quotation and its itinerary details will be permanently removed." />
