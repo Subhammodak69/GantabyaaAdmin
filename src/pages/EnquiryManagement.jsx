@@ -32,6 +32,7 @@ import ActionMenu from '../component/common/ActionMenu';
 import { apiCall, handleApiError } from '../utils/apiCall';
 import { sanitizeNumericInput } from '../utils/inputValidation';
 import { parseWhatsappEnquiry } from '../utils/whatsappEnquiryParser';
+import { findWhatsappCustomerMatch, normalizeCustomerPhone } from '../utils/whatsappCustomerMatcher';
 
 const ENQUIRY_TYPES = [
   { value: 'FIXED_TOUR', label: 'Fixed Tour' },
@@ -119,6 +120,29 @@ const defaultCreateForm = {
   meal_plan: 'ANY',
   message: '',
   special_requirements: '',
+};
+
+const getCustomerRecords = (payload) => {
+  const data = payload?.data;
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data?.results)) return data.results;
+  if (Array.isArray(payload?.items)) return payload.items;
+  return null;
+};
+
+const customerToOption = (customer) => ({
+  value: customer.id,
+  label: `${customer.name || 'Unnamed'} • ${customer.mobile || customer.phone || customer.mobile_number || customer.phone_number || 'No phone'} ${customer.email || customer.email_address ? `(${customer.email || customer.email_address})` : ''}`,
+  raw: customer,
+});
+
+const mergeCustomerRecords = (...groups) => {
+  const records = new Map();
+  groups.flat().forEach((customer) => {
+    if (customer?.id != null) records.set(String(customer.id), customer);
+  });
+  return Array.from(records.values());
 };
 
 const formatDate = (value) => {
@@ -232,6 +256,7 @@ const EnquiryManagement = () => {
   const [customers, setCustomers] = useState([]);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [selectedCustomerOption, setSelectedCustomerOption] = useState(null);
+  const [customerSelectionRequired, setCustomerSelectionRequired] = useState(false);
 
   // Selection type for Trip (Step 3): 'DESTINATION' or 'PACKAGE'
   const [tripSelectionType, setTripSelectionType] = useState('DESTINATION');
@@ -252,15 +277,8 @@ const EnquiryManagement = () => {
     try {
       const res = await apiCall('/api/v1/admin/customers?page=1&page_size=100', 'GET');
       const payload = await res.json().catch(() => ({}));
-      if (Array.isArray(payload?.data)) {
-        setCustomers(
-          payload.data.map((c) => ({
-            value: c.id,
-            label: `${c.name || 'Unnamed'} • ${c.mobile || c.phone || 'No phone'} ${c.email ? `(${c.email})` : ''}`,
-            raw: c,
-          }))
-        );
-      }
+      const records = getCustomerRecords(payload);
+      if (records) setCustomers(records.map(customerToOption));
     } catch {
       // silently ignore
     } finally {
@@ -499,6 +517,7 @@ const EnquiryManagement = () => {
     setWhatsappImportText('');
     setCustomerType('SYSTEM');
     setSelectedCustomerOption(null);
+    setCustomerSelectionRequired(false);
     setTripSelectionType('DESTINATION');
     setPackageVariants([]);
     setCreateStep(1);
@@ -513,6 +532,45 @@ const EnquiryManagement = () => {
       toast.error(error.message || 'Unable to read the WhatsApp enquiry.');
       return;
     }
+
+    let searchedCustomers = [];
+    if (parsed.email.trim() || parsed.phone.trim()) {
+      const searchTerms = Array.from(new Set([
+        parsed.email.trim(),
+        parsed.phone.trim(),
+        normalizeCustomerPhone(parsed.phone),
+      ].filter(Boolean)));
+      try {
+        searchedCustomers = (await Promise.all(searchTerms.map(async (term) => {
+          const params = new URLSearchParams({ page: '1', page_size: '100', search: term });
+          const response = await apiCall(`/api/v1/admin/customers?${params.toString()}`, 'GET');
+          const payload = await response.json().catch(() => null);
+          if (!response.ok) {
+            throw new Error(payload?.message || payload?.detail || 'Could not search existing customers.');
+          }
+          const records = getCustomerRecords(payload);
+          if (!records) throw new Error('The customer search returned an unexpected response.');
+          return records;
+        }))).flat();
+      } catch (lookupError) {
+        toast.error(lookupError.message || 'Could not verify whether this customer already exists. Please try again.');
+        return;
+      }
+    }
+
+    const availableCustomers = mergeCustomerRecords(
+      customers.map((option) => option.raw),
+      searchedCustomers
+    );
+    const customerMatch = findWhatsappCustomerMatch(availableCustomers, {
+      email: parsed.email,
+      phone: parsed.phone,
+    });
+    if (customerMatch.ambiguous) {
+      setCustomers(availableCustomers.map(customerToOption));
+    }
+    const matchedCustomer = customerMatch.customer;
+    const matchedCustomerOption = matchedCustomer ? customerToOption(matchedCustomer) : null;
 
     const normalize = (value) => value?.trim().toLowerCase().replace(/\s+/g, ' ') || '';
     const findOption = (options, value, labels) => {
@@ -542,6 +600,9 @@ const EnquiryManagement = () => {
     }
     if (!parsed.name.trim() && !parsed.phone.trim() && !parsed.email.trim()) {
       warnings.push('No contact details were found; enter a name, phone number, or email manually.');
+    }
+    if (customerMatch.ambiguous) {
+      warnings.push('More than one existing customer matches this email or mobile; select the correct customer or choose New.');
     }
     if (packageOption) {
       variantOptions = await fetchVariantsForPackage(packageOption.value);
@@ -573,6 +634,10 @@ const EnquiryManagement = () => {
     setCreateForm({
       ...defaultCreateForm,
       ...formValues,
+      name: parsed.name || matchedCustomer?.name || '',
+      phone: parsed.phone || matchedCustomer?.mobile || matchedCustomer?.phone || matchedCustomer?.mobile_number || matchedCustomer?.phone_number || '',
+      email: parsed.email || matchedCustomer?.email || matchedCustomer?.email_address || '',
+      customer_id: matchedCustomer?.id || '',
       destination_id: destinationOption?.value || packageOption?.raw?.destination_id || '',
       package_id: packageOption?.value || '',
       variant_id: variantOption?.value || '',
@@ -581,8 +646,15 @@ const EnquiryManagement = () => {
       hotel_category: hotelCategoryOption?.value || '',
       room_type: roomTypeOption?.value || '',
     });
-    setCustomerType('MANUAL');
-    setSelectedCustomerOption(null);
+    if (searchedCustomers.length) {
+      setCustomers((current) => mergeCustomerRecords(
+        current.map((option) => option.raw),
+        searchedCustomers
+      ).map(customerToOption));
+    }
+    setCustomerType(matchedCustomer || customerMatch.ambiguous ? 'SYSTEM' : 'MANUAL');
+    setSelectedCustomerOption(matchedCustomerOption);
+    setCustomerSelectionRequired(Boolean(matchedCustomer || customerMatch.ambiguous));
     setTripSelectionType(selectionType);
     setCreateStep(1);
     setWhatsappImportOpen(false);
@@ -603,6 +675,11 @@ const EnquiryManagement = () => {
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
     if (createStep !== CREATE_STEPS.length || !isCreateStepValid(CREATE_STEPS.length)) return;
+    if (customerSelectionRequired && !createForm.customer_id) {
+      toast.error('Select the matching existing customer or choose New before creating the enquiry.');
+      setCreateStep(1);
+      return;
+    }
     if (!hasContact) {
       toast.error('Please provide at least a name, phone, or email.');
       return;
@@ -1276,7 +1353,7 @@ const EnquiryManagement = () => {
                     className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg transition ${customerType === 'SYSTEM' ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}>
                     <UserCheck className="w-3.5 h-3.5" /> Existing
                   </button>
-                  <button type="button" onClick={() => { setCustomerType('MANUAL'); setSelectedCustomerOption(null); setCreateForm((prev) => ({ ...prev, customer_id: '' })); }}
+                  <button type="button" onClick={() => { setCustomerType('MANUAL'); setSelectedCustomerOption(null); setCustomerSelectionRequired(false); setCreateForm((prev) => ({ ...prev, customer_id: '' })); }}
                     className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg transition ${customerType === 'MANUAL' ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}>
                     <UserPlus className="w-3.5 h-3.5" /> New
                   </button>
@@ -1294,12 +1371,12 @@ const EnquiryManagement = () => {
                       setSelectedCustomerOption(opt);
                       if (opt?.raw) {
                         const cust = opt.raw;
-                        setCreateForm((prev) => ({ ...prev, customer_id: cust.id || '', name: cust.name || prev.name, phone: cust.mobile || cust.phone || prev.phone, email: cust.email || prev.email }));
+                        setCreateForm((prev) => ({ ...prev, customer_id: cust.id ?? '', name: cust.name || prev.name, phone: cust.mobile || cust.phone || cust.mobile_number || cust.phone_number || prev.phone, email: cust.email || cust.email_address || prev.email }));
                       } else {
                         setCreateForm((prev) => ({ ...prev, customer_id: '' }));
                       }
                     }}
-                    placeholder={customersLoading ? 'Loading customers...' : 'Search by name or phone...'}
+                    placeholder={customersLoading ? 'Loading customers...' : 'Search by name, phone, or email...'}
                     isClearable menuPlacement="auto"
                   />
                   <p className="mt-1 text-xs text-gray-400">Auto-fills contact details below.</p>
